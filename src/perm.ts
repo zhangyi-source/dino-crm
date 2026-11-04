@@ -1,0 +1,124 @@
+import { useSyncExternalStore } from 'react'
+import { dashboardPermission, dashboardExportPermission } from './dashboardPermissions'
+import { useStore } from './store'
+import { useSession } from './auth'
+import type { Account, ModuleKey, PermLevel, Role } from './types'
+
+// 当前“以谁的身份查看”（用于在原型中模拟不同角色）。持久化到 localStorage。
+const KEY = 'dinoai_crm_identity'
+const listeners = new Set<() => void>()
+let currentId: string | null = load()
+
+function load(): string | null {
+  try {
+    return localStorage.getItem(KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setIdentity(id: string | null) {
+  currentId = id
+  try {
+    if (id) localStorage.setItem(KEY, id)
+    else localStorage.removeItem(KEY)
+  } catch {
+    /* ignore */
+  }
+  listeners.forEach((l) => l())
+}
+
+export function useIdentityId(): string | null {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb)
+      return () => listeners.delete(cb)
+    },
+    () => currentId,
+  )
+}
+
+// 解析当前账号：优先使用手动切换的身份，其次按登录邮箱匹配账号。
+export function useCurrentAccount(): { account: Account | null; role: Role | null } {
+  const id = useIdentityId()
+  const accounts = useStore((s) => s.accounts)
+  const roles = useStore((s) => s.roles)
+  const session = useSession()
+
+  let acc: Account | undefined = id ? accounts.find((a) => a.id === id) : undefined
+  if (!acc && session) acc = accounts.find((a) => a.email === session.email)
+  const role = acc ? roles.find((r) => r.id === acc!.roleId) ?? null : null
+  return { account: acc ?? null, role }
+}
+
+export function usePerm() {
+  const { account, role } = useCurrentAccount()
+  const session = useSession()
+
+  // role 为空（任意工作邮箱登录、未匹配账号）时，按超级管理员处理，保证原型可用。
+  const can = (m: ModuleKey): PermLevel => {
+    if (m === 'managementDashboard') return dashboardPermission(role, account)
+    if (m === 'managementDashboard_export') return dashboardExportPermission(role, account)
+    if (!role) return 'operate'
+    // 父级「短链管理」不是可操作时，下一行即使还存着可操作也不生效。
+    if (m === 'marketingV2_shortlinks_view_line' && role.perms.marketingV2_shortlinks !== 'operate') return 'none'
+    const saved = role.perms[m]
+    if (saved) return saved
+    if (m === 'marketingV2_shortlinks') return role.id === 'role_admin' || role.id === 'role_growth' || role.id === 'role_ops' ? 'operate' : 'none'
+    if (m === 'marketingV2_shortlinks_view_line') return role.id === 'role_admin' || role.id === 'role_ops' ? 'operate' : 'none'
+    if (m === 'salesV5_batch_assign') return role.id === 'role_admin' ? 'operate' : 'none'
+    if (m === 'appABTest') return role.perms.marketing ?? 'none'
+    if (m === 'marketingV2_channel_types') return role.id === 'role_admin' ? 'operate' : 'none'
+    // 兼容四期上线前保存在 localStorage 的旧角色数据。
+    if (m === 'lifecycle') {
+      if (role.id === 'role_admin' || role.id === 'role_ops') return 'operate'
+      if (role.id === 'role_support' || role.id === 'role_sales_leader') return 'view'
+    }
+    // 兼容三期权限新增前已保存在 localStorage 的角色数据。
+    if (m === 'ordersV3') return role.perms.orders
+    if (m === 'salesV3') return role.perms.sales
+    // 旧角色未配置新营销中心时，沿用其旧营销中心总权限；管理员可在系统配置中单独调整。
+    if (m === 'marketingV2') return role.perms.marketing
+    if (m === 'marketingV2_channels') return role.perms.channels
+    if (m === 'marketingV2_skus') return role.perms.packages
+    if (m === 'marketingV2_offers') return role.perms.coupons
+    if (m === 'marketingV2_landing') return role.perms.landing
+    // Newly split marketing-center action permissions inherit the former page
+    // permission for existing roles until an administrator saves the role again.
+    if (m === 'marketingV2_channels_edit' || m === 'marketingV2_channels_status') return role.perms.marketingV2_channels ?? role.perms.channels
+    if (m === 'marketingV2_offers_status') return role.perms.marketingV2_offers ?? role.perms.coupons
+    if (m === 'marketingV2_landing_preview') return role.perms.marketingV2_landing_create ?? role.perms.landing
+    if (m === 'marketingV2_landing_copy') return role.perms.marketingV2_landing ?? role.perms.landing
+    const phase3Copy: Partial<Record<ModuleKey, ModuleKey>> = {
+      usersV2_edit: 'users_edit',
+      usersV2_phone_view: 'users_phone_view',
+      usersV2_export: 'users_export',
+      usersV2_view_report: 'usersV2',
+      usersV2_view_replay: 'usersV2',
+      ordersV3_export: 'orders_export',
+      salesV3_claim: 'sales_claim',
+      salesV3_dial: 'sales_dial',
+      salesV3_update: 'sales_update',
+      salesV3_reassign: 'sales_reassign',
+      salesV3_config: 'sales_config',
+      salesV3_import_leads: 'sales',
+      salesV3_view_report: 'sales',
+      salesV3_view_replay: 'sales',
+    }
+    const copiedFrom = phase3Copy[m]
+    if (copiedFrom) return role.perms[copiedFrom]
+    return 'none'
+  }
+  const isOperate = (m: ModuleKey) => can(m) === 'operate'
+
+  // 数据范围：null 表示全部业务线；否则仅允许这些业务线。
+  const allowedLines = (): string[] | null => {
+    if (!role) return null
+    if (role.dataScope === 'all') return null
+    return account?.businessLines ?? []
+  }
+
+  const actor = account?.email ?? session?.email ?? 'admin@dinoai.ai'
+
+  return { account, role, can, isOperate, allowedLines, actor }
+}

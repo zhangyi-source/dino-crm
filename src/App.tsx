@@ -1,0 +1,134 @@
+import { Navigate, Route, HashRouter, Routes } from 'react-router-dom'
+import { useSession } from './auth'
+import { usePerm } from './perm'
+import type { ModuleKey } from './types'
+import Login from './pages/Login'
+import AppABTest from './pages/AppConfigWorkbench'
+import ManagementDashboard from './pages/ManagementDashboard'
+import AppLayout from './components/AppLayout'
+import ChannelManagement from './pages/ChannelManagement'
+import UserCenter from './pages/UserCenter'
+import UserCenterP1 from './pages/UserCenterP1'
+import UserDetail from './pages/UserDetail'
+import SalesCenter from './pages/SalesCenter'
+import SalesCenterP3 from './pages/SalesCenterP3'
+import MarketingCenterPrototype from './pages/MarketingCenterPrototype'
+import MarketingCenterBackup from './pages/MarketingCenterBackup'
+import OrderCenter from './pages/OrderCenter'
+import OrderCenterP3 from './pages/OrderCenterP3'
+import OrderDetail from './pages/OrderDetail'
+import CoursePackagePage from './pages/CoursePackage'
+import CouponPage from './pages/Coupon'
+import LandingPageManagement from './pages/LandingPage'
+import SystemConfig from './pages/SystemConfig'
+import SystemConfig6 from './pages/SystemConfig6'
+import ShortLinks55 from './pages/phase55/ShortLinks'
+import Users55 from './pages/phase55/Users55'
+import Detail55 from './pages/phase55/Detail55'
+import Dashboard55 from './pages/phase55/Dashboard55'
+
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const session = useSession()
+  if (!session) return <Navigate to="/login" replace />
+  return children
+}
+
+const MODULE_PATH: { module: ModuleKey; path: string }[] = [
+  { module: 'users', path: '/users' },
+  { module: 'usersV2', path: '/users-v2' },
+  { module: 'sales', path: '/sales' },
+  { module: 'salesV3', path: '/sales-v3' },
+  { module: 'marketingV2', path: '/marketing-center/landing' },
+  { module: 'marketing', path: '/marketing-backup' },
+  { module: 'orders', path: '/orders' },
+  { module: 'ordersV3', path: '/orders-v3' },
+  { module: 'channels', path: '/channels' },
+  { module: 'packages', path: '/packages' },
+  { module: 'coupons', path: '/coupons' },
+  { module: 'landing', path: '/landing' },
+  { module: 'system', path: '/system' },
+  { module: 'appABTest', path: '/app-ab-test' },
+  { module: 'managementDashboard', path: '/management-dashboard' },
+]
+
+function firstAllowedPath(can: (m: ModuleKey) => string): string {
+  const hit = MODULE_PATH.find((m) => can(m.module) !== 'none')
+  return hit?.path ?? '/channels'
+}
+
+// 无权限访问的模块直接重定向到第一个可访问页面
+function Guard({ module, children }: { module: ModuleKey; children: JSX.Element }) {
+  const { can } = usePerm()
+  if (can(module) === 'none') return <Navigate to={firstAllowedPath(can)} replace />
+  return children
+}
+
+function HomeRedirect() {
+  const { can } = usePerm()
+  return <Navigate to={firstAllowedPath(can)} replace />
+}
+
+export default function App() {
+  const session = useSession()
+  return (
+    <HashRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={session ? <Navigate to="/" replace /> : <Login />}
+        />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <AppLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<HomeRedirect />} />
+          <Route path="users-v5" element={<Guard module="usersV2"><UserCenter phase3 phase5 /></Guard>} />
+          <Route path="system-v6" element={<Guard module="system"><SystemConfig6 /></Guard>} />
+          <Route path="sales-v6" element={<Guard module="salesV3"><SalesCenterP3 phase5 phase6 /></Guard>} />
+          <Route path="marketing-v55" element={<Guard module="marketingV2_shortlinks"><ShortLinks55 /></Guard>} />
+          <Route path="sales-v55" element={<Guard module="salesV3"><SalesCenterP3 phase5 phase55 detailPath="/sales-v55" /></Guard>} />
+          <Route path="sales-v55/:studentId" element={<Guard module="salesV3"><UserDetail variant="sales" backPath="/sales-v55" backText="返回销售中心" /></Guard>} />
+          <Route path="users-v55" element={<Guard module="usersV2"><Users55 /></Guard>} />
+          <Route path="users-v55/:studentId" element={<Guard module="usersV2"><Detail55 from="users" /></Guard>} />
+          <Route path="dashboard-v55" element={<Guard module="managementDashboard"><Dashboard55 /></Guard>} />
+          <Route path="system-v55" element={<Guard module="system"><SystemConfig phase55 /></Guard>} />
+          <Route path="system-v5" element={<Guard module="system"><SystemConfig phase5 /></Guard>} />
+          <Route path="users-v5/:studentId" element={<Guard module="usersV2"><UserDetail backPath="/users-v5" /></Guard>} />
+          <Route path="sales-v5" element={<Guard module="salesV3"><SalesCenterP3 phase5 /></Guard>} />
+          <Route path="sales-v5/:studentId" element={<Guard module="salesV3"><UserDetail variant="sales" backPath="/sales-v5" backText="返回销售中心五期" /></Guard>} />
+          <Route path="orders-v5" element={<Guard module="ordersV3"><OrderCenter phase5 detailsPath="/orders-v5" exportPermission="ordersV3_export" /></Guard>} />
+          <Route path="orders-v5/:orderId" element={<Guard module="ordersV3"><OrderDetail backPath="/orders-v5" /></Guard>} />
+          <Route path="app-ab-test" element={<Guard module="appABTest"><AppABTest /></Guard>} />
+          <Route path="management-dashboard" element={<Guard module="managementDashboard"><ManagementDashboard /></Guard>} />
+          <Route path="channels" element={<Guard module="channels"><ChannelManagement /></Guard>} />
+          <Route path="landing" element={<Guard module="landing"><LandingPageManagement /></Guard>} />
+          <Route path="users" element={<Guard module="users"><UserCenterP1 /></Guard>} />
+          <Route path="sales" element={<Guard module="sales"><SalesCenter /></Guard>} />
+          <Route path="sales/:studentId" element={<Guard module="sales"><UserDetail variant="sales" backPath="/sales" backText="返回销售中心" /></Guard>} />
+          <Route path="sales-v3" element={<Guard module="salesV3"><SalesCenterP3 /></Guard>} />
+          <Route path="sales-v3/:studentId" element={<Guard module="salesV3"><UserDetail variant="sales" backPath="/sales-v3" backText="返回销售中心" /></Guard>} />
+          <Route path="marketing-center" element={<Navigate to="/marketing-center/landing" replace />} />
+          <Route path="marketing-center/channels" element={<Guard module="marketingV2_channels"><MarketingCenterPrototype page="channels" /></Guard>} />
+          <Route path="marketing-center/skus" element={<Guard module="marketingV2_skus"><MarketingCenterPrototype page="skus" /></Guard>} />
+          <Route path="marketing-center/offers" element={<Guard module="marketingV2_offers"><MarketingCenterPrototype page="sets" /></Guard>} />
+          <Route path="marketing-center/landing" element={<Guard module="marketingV2_landing"><MarketingCenterPrototype page="links" /></Guard>} />
+          <Route path="marketing-backup" element={<Guard module="marketing"><MarketingCenterBackup /></Guard>} />
+          <Route path="users-v2" element={<Guard module="usersV2"><UserCenter phase3 /></Guard>} />
+          <Route path="users-v2/:studentId" element={<Guard module="usersV2"><UserDetail /></Guard>} />
+          <Route path="orders" element={<Guard module="orders"><OrderCenter /></Guard>} />
+          <Route path="orders/:orderId" element={<Guard module="orders"><OrderDetail /></Guard>} />
+          <Route path="orders-v3" element={<Guard module="ordersV3"><OrderCenterP3 /></Guard>} />
+          <Route path="orders-v3/:orderId" element={<Guard module="ordersV3"><OrderDetail backPath="/orders-v3" /></Guard>} />
+          <Route path="packages" element={<Guard module="packages"><CoursePackagePage /></Guard>} />
+          <Route path="coupons" element={<Guard module="coupons"><CouponPage /></Guard>} />
+          <Route path="system" element={<Guard module="system"><SystemConfig /></Guard>} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </HashRouter>
+  )
+}

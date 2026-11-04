@@ -1,0 +1,368 @@
+import { useEffect, useState } from 'react'
+import { Layout, Menu, Avatar, Dropdown, Modal, Typography, Button, Tag } from 'antd'
+import {
+  ApartmentOutlined,
+  TeamOutlined,
+  ProfileOutlined,
+  AppstoreOutlined,
+  TagsOutlined,
+  LinkOutlined,
+  SafetyOutlined,
+  LogoutOutlined,
+  DownOutlined,
+  RedoOutlined,
+  GlobalOutlined,
+  UserSwitchOutlined,
+  ShopOutlined,
+  SolutionOutlined,
+  HistoryOutlined,
+  DashboardOutlined,
+  ExperimentOutlined,
+} from '@ant-design/icons'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { logout, useSession } from '../auth'
+import { resetState, useStore } from '../store'
+import { LOGO } from '../logo'
+import { LANGS, useI18n } from '../i18n'
+import { setIdentity, useCurrentAccount, usePerm } from '../perm'
+import type { ModuleKey } from '../types'
+
+const { Header, Sider, Content } = Layout
+const { Text } = Typography
+
+const NAV_MODULE: Record<string, ModuleKey> = {
+  '/system-v6': 'system',
+  '/sales-v6': 'salesV3',
+  '/marketing-v55': 'marketingV2_shortlinks',
+  '/sales-v55': 'salesV3',
+  '/users-v55': 'usersV2',
+  '/dashboard-v55': 'managementDashboard',
+  '/system-v55': 'system',
+  '/system-v5': 'system',
+  '/users-v5': 'usersV2',
+  '/sales-v5': 'salesV3',
+  '/orders-v5': 'ordersV3',
+  '/channels': 'channels',
+  '/landing': 'landing',
+  '/management-dashboard': 'managementDashboard',
+  '/app-ab-test': 'appABTest',
+  '/users': 'users',
+  '/sales': 'sales',
+  '/sales-v3': 'salesV3',
+  '/marketing-center/channels': 'marketingV2_channels',
+  '/marketing-center/skus': 'marketingV2_skus',
+  '/marketing-center/offers': 'marketingV2_offers',
+  '/marketing-center/landing': 'marketingV2_landing',
+  '/marketing-backup': 'marketing',
+  '/users-v2': 'usersV2',
+  '/orders': 'orders',
+  '/orders-v3': 'ordersV3',
+  '/packages': 'packages',
+  '/coupons': 'coupons',
+  '/system': 'system',
+}
+
+export default function AppLayout() {
+  const [collapsed, setCollapsed] = useState(false)
+  const [openKeys, setOpenKeys] = useState<string[]>(['developing', 'designing'])
+  const navigate = useNavigate()
+  const location = useLocation()
+  // 取一级路径，保证子路由（如 /users-v2/:id 详情页）也能高亮菜单并显示标题
+  const basePath = `/${location.pathname.split('/')[1] ?? ''}`
+  const selectedPath = location.pathname.startsWith('/marketing-center/') || location.pathname.startsWith('/marketing-backup/') ? location.pathname : basePath
+  useEffect(() => {
+    const group = basePath.endsWith('-v6') || basePath.endsWith('-v55') ? 'designing'
+      : basePath.endsWith('-v5') || basePath === '/management-dashboard' ? 'developing' : 'archived'
+    const parent = location.pathname.startsWith('/marketing-center/') ? 'marketing-v2'
+      : ['/channels', '/landing', '/packages', '/coupons', '/marketing-backup'].includes(basePath) ? 'marketing-backup' : null
+    setOpenKeys(keys => [...new Set([...keys, group, ...(parent ? [parent] : [])])])
+  }, [location.pathname, basePath, collapsed])
+  const session = useSession()
+  const { t, lang, setLang } = useI18n()
+  const { can } = usePerm()
+  const { account, role } = useCurrentAccount()
+  const accounts = useStore((s) => s.accounts)
+  const roles = useStore((s) => s.roles)
+
+  const phaseLabel = (text: string, phaseText: string, color: string) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {text}
+      <Tag color={color} style={{ margin: 0, lineHeight: '16px', fontSize: 11, padding: '0 5px' }}>
+        {phaseText}
+      </Tag>
+    </span>
+  )
+  const phase2Label = (text: string) => phaseLabel(text, t('app.phase2'), 'orange')
+  const phase3Label = (text: string) => phaseLabel(text, t('app.phase3'), 'purple')
+  const phase4Label = (text: string) => phaseLabel(text, lang === 'en' ? 'Phase 4' : '四期', 'cyan')
+  const dashboardPhaseLabel = (text: string) => phaseLabel(text, lang === 'en' ? 'Phase 5' : '五期', 'geekblue')
+
+  const appABPhaseLabel = (text: string) => phaseLabel(text, lang === 'en' ? 'Phase 5' : '五期', 'geekblue')
+
+  const visible = (key: string) => can(NAV_MODULE[key]) !== 'none'
+
+  // 一期功能
+  const topNav = [
+    { key: '/users', icon: <TeamOutlined />, label: t('app.nav.users') },
+    { key: '/orders', icon: <ProfileOutlined />, label: t('app.nav.orders') },
+  ].filter((n) => visible(n.key))
+
+  const ordersV3Nav = [
+    { key: '/orders-v3', icon: <ProfileOutlined />, label: phase3Label(t('app.nav.orders')) },
+  ].filter((n) => visible(n.key))
+
+  // 旧营销中心：仅作为备份留存
+  const marketingBackupChildren = [
+    { key: '/channels', icon: <ApartmentOutlined />, label: t('app.nav.channels') },
+    { key: '/landing', icon: <LinkOutlined />, label: t('app.nav.landing') },
+    { key: '/packages', icon: <AppstoreOutlined />, label: t('app.nav.packages') },
+    { key: '/coupons', icon: <TagsOutlined />, label: t('app.nav.coupons') },
+  ].filter((n) => visible(n.key))
+
+  const marketingV2Children = [
+    { key: '/marketing-center/channels', icon: <ApartmentOutlined />, label: lang === 'en' ? 'Channel Management' : '渠道管理' },
+    { key: '/marketing-center/skus', icon: <AppstoreOutlined />, label: lang === 'en' ? 'SKU Catalog' : 'SKU 管理' },
+    { key: '/marketing-center/offers', icon: <TagsOutlined />, label: lang === 'en' ? 'Channel SKU Price Plans' : '渠道 SKU 价格方案' },
+    { key: '/marketing-center/landing', icon: <LinkOutlined />, label: lang === 'en' ? 'Landing Page Management' : '落地页管理' },
+  ].filter((n) => visible(n.key))
+
+  // 销售中心（二期）
+  const salesNav = [
+    { key: '/sales', icon: <SolutionOutlined />, label: phase2Label(t('app.nav.sales')) }
+  ].filter((n) =>
+    visible(n.key),
+  )
+  const salesV3Nav = [
+    { key: '/sales-v3', icon: <SolutionOutlined />, label: phase3Label(t('app.nav.sales')) },
+  ].filter((n) => visible(n.key))
+  // 用户中心（三期）
+  const usersV2Nav = [
+    { key: '/users-v2', icon: <TeamOutlined />, label: phase3Label(t('app.nav.users')) },
+  ].filter((n) => visible(n.key))
+  // 系统配置（二期）
+  const systemNav = [
+    { key: '/system', icon: <SafetyOutlined />, label: phase2Label(t('app.nav.system')) },
+  ].filter((n) => visible(n.key))
+
+  const phase5Nav = [
+    { key: '/users-v5', icon: <TeamOutlined />, label: appABPhaseLabel(t('app.nav.users')) },
+    { key: '/sales-v5', icon: <SolutionOutlined />, label: appABPhaseLabel(t('app.nav.sales')) },
+    { key: '/orders-v5', icon: <ProfileOutlined />, label: appABPhaseLabel(t('app.nav.orders')) },
+    { key: '/system-v5', icon: <SafetyOutlined />, label: appABPhaseLabel(t('app.nav.system')) },
+  ].filter(item => visible(item.key))
+
+  const archivedNav = [
+    ...topNav,
+    ...salesNav,
+    ...systemNav,
+    ...usersV2Nav,
+    ...ordersV3Nav,
+    ...salesV3Nav,
+    ...(marketingV2Children.length ? [{ key: 'marketing-v2', icon: <ShopOutlined />, label: phase4Label(lang === 'en' ? 'Marketing Center' : '营销中心'), children: marketingV2Children }] : []),
+    ...(marketingBackupChildren.length
+      ? [
+          {
+            key: 'marketing-backup',
+            icon: <HistoryOutlined />,
+            label: phase4Label(lang === 'en' ? 'Marketing Center Backup' : '营销中心备份'),
+            children: [{ key: '/marketing-backup', icon: <HistoryOutlined />, label: lang === 'en' ? 'Backup overview' : '备份说明' }, ...marketingBackupChildren],
+          },
+        ]
+      : []),
+    ...(visible('/app-ab-test') ? [{ key: '/app-ab-test', icon: <ExperimentOutlined />, label: appABPhaseLabel(lang === 'en' ? 'APP A/B test' : 'APP A/B test配置') }] : []),
+  ]
+  const developingNav = [
+    ...(visible('/management-dashboard') ? [{ key: '/management-dashboard', icon: <DashboardOutlined />, label: dashboardPhaseLabel(lang === 'en' ? 'Management Dashboard' : '管理看板') }] : []),
+    ...phase5Nav,
+  ]
+  const designingNav = [
+    { key: '/system-v6', icon: <SafetyOutlined />, label: phaseLabel(t('app.nav.system'), lang === 'en' ? 'Phase 6' : '六期', 'purple') },
+    { key: '/sales-v6', icon: <SolutionOutlined />, label: phaseLabel(t('app.nav.sales'), lang === 'en' ? 'Phase 6' : '六期', 'purple') },
+    { key: '/system-v55', icon: <SafetyOutlined />, label: phaseLabel(t('app.nav.system'), '5.5', 'blue') },
+    { key: '/marketing-v55', icon: <LinkOutlined />, label: phaseLabel(lang === 'en' ? 'Marketing' : '营销中心', '5.5', 'blue') },
+    { key: '/sales-v55', icon: <SolutionOutlined />, label: phaseLabel(t('app.nav.sales'), '5.5', 'blue') },
+    { key: '/users-v55', icon: <TeamOutlined />, label: phaseLabel(t('app.nav.users'), '5.5', 'blue') },
+    { key: '/dashboard-v55', icon: <DashboardOutlined />, label: phaseLabel(lang === 'en' ? 'Dashboard' : '管理看板', '5.5', 'blue') },
+  ].filter(item => visible(item.key))
+  const NAV = [
+    ...(archivedNav.length ? [{ key: 'archived', icon: <HistoryOutlined />, label: lang === 'en' ? 'Archived' : '已归档', children: archivedNav }] : []),
+    ...(developingNav.length ? [{ key: 'developing', icon: <AppstoreOutlined />, label: lang === 'en' ? 'In development' : '开发中', children: developingNav }] : []),
+    ...(designingNav.length ? [{ key: 'designing', icon: <ExperimentOutlined />, label: lang === 'en' ? 'In design' : '设计中', children: designingNav }] : []),
+  ]
+
+  const TITLES: Record<string, string> = {
+    '/system-v6': lang === 'en' ? 'System Configuration · Phase 6' : '系统配置 · 六期',
+    '/sales-v6': lang === 'en' ? 'Sales Center · Phase 6' : '销售中心 · 六期',
+    '/system-v55': t('v55.title.system'),
+    '/marketing-v55': t('v55.title.marketing'),
+    '/sales-v55': t('v55.title.sales'),
+    '/users-v55': t('v55.title.users'),
+    '/dashboard-v55': t('v55.title.dashboard'),
+    '/system-v5': lang === 'en' ? 'System Configuration · Phase 5' : '系统配置 · 五期',
+    '/users-v5': '用户中心 · 五期',
+    '/sales-v5': '销售中心 · 五期',
+    '/orders-v5': '订单中心 · 五期',
+    '/app-ab-test': lang === 'en' ? 'APP A/B test configuration' : 'APP A/B test配置',
+    '/management-dashboard': lang === 'en' ? 'Management Dashboard' : '管理看板',
+    '/channels': t('app.nav.channels'),
+    '/landing': t('app.nav.landing'),
+    '/users': t('app.nav.users'),
+    '/sales': t('app.nav.sales'),
+    '/sales-v3': t('app.nav.sales'),
+    '/marketing-center/channels': lang === 'en' ? 'Marketing Center' : '营销中心',
+    '/marketing-center/skus': lang === 'en' ? 'Marketing Center' : '营销中心',
+    '/marketing-center/offers': lang === 'en' ? 'Marketing Center' : '营销中心',
+    '/marketing-center/landing': lang === 'en' ? 'Marketing Center' : '营销中心',
+    '/marketing-backup': lang === 'en' ? 'Marketing Center Backup' : '营销中心备份',
+    '/users-v2': t('app.nav.usersV2'),
+    '/orders': t('app.nav.orders'),
+    '/orders-v3': t('app.nav.orders'),
+    '/packages': t('app.nav.packages'),
+    '/coupons': t('app.nav.coupons'),
+    '/system': t('app.nav.system'),
+  }
+
+  const onLogout = () => {
+    Modal.confirm({
+      title: t('app.logout.title'),
+      content: t('app.logout.content'),
+      okText: t('app.logout.ok'),
+      cancelText: t('common.cancel'),
+      onOk: () => logout(),
+    })
+  }
+
+  const onReset = () => {
+    Modal.confirm({
+      title: t('app.reset.title'),
+      content: t('app.reset.content'),
+      okText: t('app.reset.ok'),
+      cancelText: t('common.cancel'),
+      onOk: () => resetState(),
+    })
+  }
+
+  const currentLang = LANGS.find((l) => l.value === lang)
+
+  return (
+    <Layout className="crm-shell" style={{ height: '100vh' }}>
+      <Sider breakpoint="lg" onBreakpoint={setCollapsed} collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="dark" width={276} style={{ overflow: 'auto' }}>
+        <div
+          style={{
+            height: 56,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '0 18px',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: 16,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+          }}
+        >
+          <img src={LOGO} width={26} height={26} alt="logo" />
+          {!collapsed && <span>{t('app.brand')}</span>}
+        </div>
+        <Menu
+          theme="dark"
+          mode="inline"
+          inlineIndent={16}
+          selectedKeys={[selectedPath]}
+          openKeys={openKeys}
+          onOpenChange={(keys) => setOpenKeys(keys as string[])}
+          items={NAV}
+          onClick={({ key }) => {
+            if (key !== 'marketing') navigate(key)
+          }}
+        />
+      </Sider>
+      <Layout style={{ minWidth: 0 }}>
+        <Header
+          style={{
+            background: '#fff',
+            padding: '0 24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 4px rgba(0,21,41,0.08)',
+          }}
+        >
+          <Text strong style={{ fontSize: 18 }}>
+            {TITLES[selectedPath] ?? TITLES[basePath] ?? t('app.brand')}
+          </Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Dropdown
+              menu={{
+                selectedKeys: [account?.id ?? '__default__'],
+                style: { maxHeight: 360, overflow: 'auto' },
+                items: [
+                  {
+                    key: '__default__',
+                    label: t('perm.identity.default'),
+                    onClick: () => setIdentity(null),
+                  },
+                  { type: 'divider' as const },
+                  ...accounts.map((a) => {
+                    const r = roles.find((x) => x.id === a.roleId)
+                    return {
+                      key: a.id,
+                      label: (
+                        <span>
+                          {a.name} · <Text type="secondary">{r?.name}</Text>
+                        </span>
+                      ),
+                      onClick: () => setIdentity(a.id),
+                    }
+                  }),
+                ],
+              }}
+            >
+              <Button type="text" icon={<UserSwitchOutlined />}>
+                {account ? account.name : t('perm.identity.default')}
+                {role && (
+                  <Tag color="geekblue" style={{ marginLeft: 6 }}>
+                    {role.name}
+                  </Tag>
+                )}
+                <DownOutlined style={{ fontSize: 10 }} />
+              </Button>
+            </Dropdown>
+            <Dropdown
+              menu={{
+                selectedKeys: [lang],
+                items: LANGS.map((l) => ({
+                  key: l.value,
+                  label: `${l.flag}  ${l.label}`,
+                  onClick: () => setLang(l.value),
+                })),
+              }}
+            >
+              <Button type="text" icon={<GlobalOutlined />}>
+                {currentLang?.flag} {currentLang?.label} <DownOutlined style={{ fontSize: 10 }} />
+              </Button>
+            </Dropdown>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'reset', icon: <RedoOutlined />, label: t('app.menu.resetData'), onClick: onReset },
+                  { type: 'divider' },
+                  { key: 'logout', icon: <LogoutOutlined />, label: t('app.menu.logout'), danger: true, onClick: onLogout },
+                ],
+              }}
+            >
+              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar style={{ background: '#2F6BFF' }}>{session?.email?.[0]?.toUpperCase()}</Avatar>
+                <Text>{session?.email}</Text>
+                <DownOutlined style={{ fontSize: 12, color: '#999' }} />
+              </div>
+            </Dropdown>
+          </div>
+        </Header>
+        <Content style={{ margin: 20, overflow: 'auto' }}>
+          <Outlet />
+        </Content>
+      </Layout>
+    </Layout>
+  )
+}

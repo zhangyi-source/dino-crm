@@ -1,0 +1,232 @@
+import { useDashboardContext } from '../components/DashboardLinkContext'
+import { useMemo } from 'react'
+import dayjs from 'dayjs'
+import { Button, Card, Descriptions, Space, Table, Tag, Typography } from 'antd'
+import { ArrowLeftOutlined, FileTextOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import type { ColumnsType } from 'antd/es/table'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useStore } from '../store'
+import type { LessonRecord, LoginMethod, UserStatus, UserType } from '../types'
+import { useI18n } from '../i18n'
+import { usePerm } from '../perm'
+import { resolveUserType } from '../userType'
+import { completedLessons, openReplayVideo, reportKind, resolveUserStatus, studentLessons, TRIAL_REPORT_URL } from '../lessons'
+import { appChannelSourceText, lineLabel, lpChannelSourceText } from '../channel'
+import LocalTime from '../components/LocalTime'
+import { CONSULTATION_STAGE_COLOR, consultationStage } from '../salesLifecycle'
+import { outcomeReasonLabel5, followReason5, followStage5 } from '../review5'
+
+const { Text } = Typography
+
+const STATUS_COLOR: Record<UserStatus, string> = {
+  '未付费-未体验': 'default',
+  '未付费-体验中': 'gold',
+  '未付费-已体验': 'blue',
+  付费: 'green',
+  付费逾期: 'red',
+}
+const USER_TYPE_COLOR: Record<UserType, string> = { 正式用户: 'green', 测试用户: 'gold' }
+
+export default function UserDetail({ backPath = '/users-v2', backText, variant = 'user' }: { backPath?: string; backText?: string; variant?: 'user' | 'sales' }) {
+  const phase55 = backPath.endsWith('-v55')
+  const phase5 = backPath.endsWith('-v5') || phase55
+  const { t, lang } = useI18n()
+  const text = (zh: string, en: string) => lang === 'zh' ? zh : en
+  const dashboardContext = useDashboardContext()
+  const navigate = useNavigate()
+  const { studentId = '' } = useParams()
+  const students = useStore((s) => s.students)
+  const accounts = useStore(s => s.accounts)
+  const channels = useStore((s) => s.channels)
+  const lessons = useStore((s) => s.lessons ?? [])
+  const callRecords = useStore((s) => s.callRecords ?? [])
+  const { allowedLines, can } = usePerm()
+  const scope = allowedLines()
+
+  const student = useMemo(() => students.find((s) => s.studentId === studentId), [students, studentId])
+  const currentUserStatus = useMemo(
+    () => student ? resolveUserStatus(student, lessons) : undefined,
+    [student, lessons],
+  )
+  const vietnamFollowStage = useMemo(
+    () => student && (phase5 || student.businessLine === '越南') && currentUserStatus && !['付费', '付费逾期'].includes(currentUserStatus)
+      ? phase5 ? followStage5(student, callRecords) : consultationStage(student, callRecords)
+      : undefined,
+    [phase5, student, callRecords, currentUserStatus],
+  )
+  const inScope = student && (!scope || scope.includes(student.businessLine))
+  const canViewReport = can(variant === 'sales' ? 'salesV3_view_report' : 'usersV2_view_report') === 'operate'
+  const canViewReplay = can(variant === 'sales' ? 'salesV3_view_replay' : 'usersV2_view_replay') === 'operate'
+  const courseData = useMemo(
+    () => studentLessons(lessons, studentId)
+      .filter((lesson) => lesson.status === '进行中' || lesson.status === '已完课')
+      .sort((a, b) => {
+        if (a.status !== b.status) return a.status === '进行中' ? -1 : 1
+        const aTime = a.status === '进行中' ? a.startedAt : a.completedAt
+        const bTime = b.status === '进行中' ? b.startedAt : b.completedAt
+        return (bTime ?? '').localeCompare(aTime ?? '')
+      }),
+    [lessons, studentId],
+  )
+  const learningReports = useMemo(() => {
+    const done = completedLessons(lessons, studentId)
+    const times = (type: LessonRecord['lessonType']) => done.filter((lesson) => lesson.lessonType === type).map((lesson) => lesson.completedAt).filter((time): time is string => !!time)
+    return [
+      { key: 'trial', type: t('v55.report.trial'), times: times('体验课') },
+      { key: 'class', type: t('v55.report.class'), times: times('正式课') },
+      { key: 'unit', type: t('v55.report.unit'), times: [] as string[] },
+      { key: 'week', type: t('v55.report.week'), times: [] as string[] },
+      { key: 'month', type: t('v55.report.month'), times: [] as string[] },
+    ]
+  }, [lessons, studentId, t])
+
+  const back = (
+    <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(dashboardContext.dashboardReturn || backPath)}>
+      {dashboardContext.dashboardReturn ? text('返回管理看板', 'Back to dashboard') : variant === 'sales' ? text('返回销售中心', 'Back to Sales Center') : backText ?? t('user.back')}
+    </Button>
+  )
+
+  if (!student || !inScope) {
+    return (
+      <Card className="page-card" bordered={false} title={<span className="section-title">{t('user.detail')}</span>} extra={back}>
+        <Text type="secondary">{t('user.detailNotFound')}</Text>
+      </Card>
+    )
+  }
+
+  const courseColumns: ColumnsType<LessonRecord> = [
+    { title: text('课标', 'Course label'), dataIndex: 'courseLabel', width: 190, render: (v) => <Text code>{v}</Text> },
+    {
+      title: text('课程状态', 'Lesson status'),
+      dataIndex: 'status',
+      width: 110,
+      render: (v: LessonRecord['status']) => <Tag color={v === '已完课' ? 'green' : 'processing'}>{v === '已完课' ? text('已完成', 'Completed') : text('进行中', 'In progress')}</Tag>,
+    },
+    { title: text('课程名称', 'Course name'), dataIndex: 'courseName', width: 180, render: (v: string | undefined, r) => v || `Dino English${r.lessonType}` },
+    { title: t('lesson.col.teacher'), dataIndex: 'teacher', width: 130, render: (v) => v || <Text type="secondary">—</Text> },
+    {
+      title: text('上课时间', 'Lesson time'),
+      key: 'startedAt',
+      width: 200,
+      render: (_: unknown, r: LessonRecord) => <LocalTime time={r.startedAt ?? r.completedAt} country={student.country || student.businessLine} />,
+    },
+    {
+      title: t('lesson.col.completedAt'),
+      dataIndex: 'completedAt',
+      width: 200,
+      render: (v: string | undefined, r: LessonRecord) =>
+        r.status === '进行中' ? <Text type="secondary">—</Text> : <LocalTime time={v} country={student.country || student.businessLine} />,
+    },
+    {
+      title: t('lesson.col.report'),
+      key: 'report',
+      width: 150,
+      render: (_: unknown, r: LessonRecord) =>
+        canViewReport && r.status === '已完课' && r.report ? (
+          <Button
+            type="link"
+            style={{ padding: 0 }}
+            icon={<FileTextOutlined />}
+            onClick={() => window.open(TRIAL_REPORT_URL, '_blank', 'noopener,noreferrer')}
+          >
+            {reportKind(r)}
+          </Button>
+        ) : <Text type="secondary">—</Text>,
+    },
+    {
+      title: t('lesson.col.replay'),
+      key: 'replay',
+      width: 110,
+      render: (_: unknown, r: LessonRecord) =>
+        canViewReplay && r.status === '已完课' && r.replayUrl ? (
+          <Button type="link" style={{ padding: 0 }} icon={<PlayCircleOutlined />} onClick={() => openReplayVideo(r.replayUrl)}>
+            {t('lesson.viewReplay')}
+          </Button>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
+  ]
+
+  return (
+    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+      <Card
+        className="page-card"
+        bordered={false}
+        title={<span className="section-title">{t('user.detail')}</span>}
+        extra={back}
+      >
+        <Descriptions column={2} bordered size="small">
+          <Descriptions.Item label={text('用户ID', 'User ID')}>{student.studentId}</Descriptions.Item>
+          <Descriptions.Item label={text('学生姓名', 'Student name')}>{student.localName || student.name}</Descriptions.Item>
+          {variant === 'sales' && <Descriptions.Item label={text('购买意向', 'Purchase intent')}>{student.purchaseIntention || <Text type="secondary">—</Text>}</Descriptions.Item>}
+          {vietnamFollowStage && <Descriptions.Item label={t('sales.consultation.currentStage')}><Tag color={CONSULTATION_STAGE_COLOR[vietnamFollowStage]}>{['Rejected', 'Closed'].includes(vietnamFollowStage) ? t(`sales.outcome.${vietnamFollowStage}`) : t(`sales.consultation.stage.${vietnamFollowStage}`)}</Tag></Descriptions.Item>}
+          <Descriptions.Item label={t('user.col.status')}>
+            {(() => {
+              const status = currentUserStatus!
+              return <Tag color={STATUS_COLOR[status]}>{t(`enum.status.${status}`)}</Tag>
+            })()}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('user.col.userType')}><Tag color={USER_TYPE_COLOR[resolveUserType(student)]}>{t(`enum.userType.${resolveUserType(student)}`)}</Tag></Descriptions.Item>
+          <Descriptions.Item label={t('user.col.ageGroup')}>{student.ageGroup ? <Tag color="geekblue">{student.ageGroup}</Tag> : <Text type="secondary">—</Text>}</Descriptions.Item>
+          <Descriptions.Item label={text('课程等级', 'Course level')}>{student.courseLevel || <Text type="secondary">—</Text>}</Descriptions.Item>
+          {variant === 'user' && <Descriptions.Item label={t('user.col.method')}>{t(`enum.method.${student.loginMethod as LoginMethod}`)}</Descriptions.Item>}
+          <Descriptions.Item label={t('user.col.account')}>{student.account || <Text type="secondary">—</Text>}</Descriptions.Item>
+          <Descriptions.Item label={t('user.col.channelSourceLp')}>{lpChannelSourceText(channels, student) === '—' ? <Text type="secondary">—</Text> : lpChannelSourceText(channels, student)}</Descriptions.Item>
+          <Descriptions.Item label={t('user.col.code')}>{student.channelCode ? <Text code>{student.channelCode}</Text> : <Text type="secondary">—</Text>}</Descriptions.Item>
+          <Descriptions.Item label={t('user.col.channelSourceApp')}>{appChannelSourceText(student) === '—' ? <Text type="secondary">—</Text> : appChannelSourceText(student)}</Descriptions.Item>
+          <Descriptions.Item label={t('user.col.country')}><Tag>{lineLabel(student)}</Tag></Descriptions.Item>
+          <Descriptions.Item label={t('user.col.regTime')}><LocalTime time={student.registerTime} country={student.country || student.businessLine} /></Descriptions.Item>
+          {variant === 'user' ? <>
+            <Descriptions.Item label={t('user.col.expireTime')}><LocalTime time={student.expireTime} country={student.country || student.businessLine} /></Descriptions.Item>
+            <Descriptions.Item label={text('优惠码', 'Coupon code')}>{student.couponCode ? <Tag color="blue">{student.couponCode}</Tag> : <Text type="secondary">—</Text>}</Descriptions.Item>
+          </> : <>
+            <Descriptions.Item label={text('最新备注', 'Latest note')}>{student.salesLatestNote || <Text type="secondary">—</Text>}</Descriptions.Item>
+            <Descriptions.Item label={text('最后更新', 'Last updated')}><LocalTime time={student.salesUpdatedAt} country={student.country || student.businessLine} /></Descriptions.Item>
+            <Descriptions.Item label={text('领取人', 'Owner')}>{student.salesOwner || <Text type="secondary">—</Text>}</Descriptions.Item>
+          </>}
+          <Descriptions.Item label="CC">{(phase5 ? accounts.find(a => a.email === student.salesOwner)?.name || student.salesOwner || student.ccName : student.ccName) || <Text type="secondary">—</Text>}</Descriptions.Item>
+          {phase5 && followReason5(student) && <Descriptions.Item label={t('sales.outcome.reasonLabel')}>{outcomeReasonLabel5(followReason5(student), t)}</Descriptions.Item>}
+          <Descriptions.Item label={text('是否预约外呼', 'Callback requested')}>{student.landingCallbackAt && dayjs.utc(student.landingCallbackAt).isValid() ? <Tag color="blue">{text('已填写', 'Provided')}</Tag> : <Text type="secondary">{text('未填写', 'Not provided')}</Text>}</Descriptions.Item>
+          <Descriptions.Item label={text('预约外呼时间', 'Callback time')}><LocalTime time={student.landingCallbackAt} country={student.country || student.businessLine} /></Descriptions.Item>
+          <Descriptions.Item label={text('英语学习程度', 'English level')}>{student.landingEnglishLevel || <Text type="secondary">—</Text>}</Descriptions.Item>
+          <Descriptions.Item label={text('学习目的', 'Learning goal')}>{student.landingLearningGoal || <Text type="secondary">—</Text>}</Descriptions.Item>
+          {student.businessLine === '马来' && <Descriptions.Item label={text('孩子当前学习方式', 'Current learning method')}>{student.landingCurrentLearningMethod || <Text type="secondary">—</Text>}</Descriptions.Item>}
+        </Descriptions>
+      </Card>
+
+      {phase55 && <Card className="page-card" bordered={false} title={<span className="section-title">{t('v55.report.section')}</span>}>
+        <Table
+          rowKey="key"
+          pagination={false}
+          dataSource={learningReports}
+          columns={[
+            { title: t('v55.report.type'), dataIndex: 'type', width: 180 },
+            { title: t('v55.report.time'), dataIndex: 'times', render: (times: string[], row) => times.length ? times.map((time) => (
+              <div key={time}><Button type="link" style={{ padding: 0 }} onClick={() => {
+                if (row.key === 'trial') window.open(TRIAL_REPORT_URL, '_blank', 'noopener,noreferrer')
+                else {
+                  const page = window.open('', '_blank')
+                  if (!page) return
+                  page.document.title = row.type
+                  page.document.body.textContent = `${row.type}\n${time}`
+                }
+              }}>{time}</Button></div>
+            )) : <Text type="secondary">—</Text> },
+          ]}
+        />
+      </Card>}
+
+      <Card className="page-card" bordered={false} title={<span className="section-title">{t('user.courseInfo')}</span>}>
+        <Table
+          rowKey="id"
+          columns={courseColumns}
+          dataSource={courseData}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: t('lesson.empty') }}
+          pagination={{ showTotal: (n) => t('common.total', { n }), showSizeChanger: true }}
+        />
+      </Card>
+    </Space>
+  )
+}
