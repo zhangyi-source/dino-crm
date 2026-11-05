@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Card, Form, Input, Select, Space, Table, Typography, message } from 'antd'
-import { CopyOutlined, PlusOutlined } from '@ant-design/icons'
+import { Button, Card, Form, Input, Select, Space, Table, Tag, Typography, message } from 'antd'
+import { PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { BUSINESS_LINES, type BusinessLine } from '../../types'
 import { useSession } from '../../auth'
@@ -18,9 +18,11 @@ type ShortLink = {
   creator: string
   createdAt: string
   expires: string
+  status: 'active' | 'expired' | 'deleted' | 'unknown' | 'archived'
 }
 
 const DOMAIN = 'go.dinoai.ai'
+const MAX_LINKS = 500
 const READY_LINES = new Set<BusinessLine>(BUSINESS_LINES.filter((line) => line !== '其他'))
 
 const seed: ShortLink[] = [
@@ -35,6 +37,7 @@ const seed: ShortLink[] = [
     creator: 'marketing@dinoai.ai',
     createdAt: '2026-09-23 14:20',
     expires: '不过期',
+    status: 'active',
   },
   {
     id: 'sl-ksa-2',
@@ -47,6 +50,7 @@ const seed: ShortLink[] = [
     creator: 'admin@dinoai.ai',
     createdAt: '2026-10-02 11:05',
     expires: '不过期',
+    status: 'active',
   },
   {
     id: 'sl-kr',
@@ -59,6 +63,7 @@ const seed: ShortLink[] = [
     creator: 'growth.kr@dinoai.ai',
     createdAt: '2026-09-28 09:40',
     expires: '不过期',
+    status: 'active',
   },
   {
     id: 'sl-kr-2',
@@ -71,6 +76,7 @@ const seed: ShortLink[] = [
     creator: 'admin@dinoai.ai',
     createdAt: '2026-10-06 16:12',
     expires: '不过期',
+    status: 'archived',
   },
   {
     id: 'sl-vn',
@@ -83,6 +89,7 @@ const seed: ShortLink[] = [
     creator: 'ops.vn@dinoai.ai',
     createdAt: '2026-09-30 13:18',
     expires: '不过期',
+    status: 'active',
   },
   {
     id: 'sl-vn-2',
@@ -95,6 +102,7 @@ const seed: ShortLink[] = [
     creator: 'growth.kr@dinoai.ai',
     createdAt: '2026-10-01 10:02',
     expires: '不过期',
+    status: 'active',
   },
 ]
 
@@ -126,30 +134,47 @@ export default function ShortLinks55() {
     [links, line, canViewLine, me],
   )
 
-  const copy = async (value: string) => {
-    await navigator.clipboard.writeText(value)
-    message.success(t('v55.short.copied'))
+  const generateAlias = () => {
+    let alias = ''
+    do {
+      alias = Math.random().toString(36).slice(2, 8)
+    } while (links.some((item) => item.domain === DOMAIN && item.alias === alias))
+    return alias
+  }
+
+  const startCreating = () => {
+    if (links.length >= MAX_LINKS) {
+      message.warning(t('v55.short.limitReached'))
+      return
+    }
+    form.setFieldsValue({ alias: generateAlias() })
+    setCreating(true)
+  }
+
+  const statusMeta: Record<ShortLink['status'], { color: string; label: string }> = {
+    active: { color: 'success', label: t('v55.short.statusActive') },
+    expired: { color: 'default', label: t('v55.short.statusExpired') },
+    deleted: { color: 'error', label: t('v55.short.statusDeleted') },
+    unknown: { color: 'warning', label: t('v55.short.statusUnknown') },
+    archived: { color: 'blue', label: t('v55.short.statusArchived') },
   }
 
   const columns: ColumnsType<ShortLink> = [
     { title: t('v55.short.name'), dataIndex: 'name', width: 160 },
+    { title: t('v55.short.url'), dataIndex: 'url', width: 300, ellipsis: true },
     { title: t('v55.short.tiny'), dataIndex: 'tiny', width: 240, render: (value: string) => <Typography.Text copyable={{ text: value, tooltips: [t('common.copy'), t('common.copied')] }}>{value}</Typography.Text> },
-    { title: t('v55.short.url'), dataIndex: 'url', ellipsis: true },
-    { title: t('v55.short.domain'), dataIndex: 'domain', width: 140 },
-    { title: t('v55.short.alias'), dataIndex: 'alias', width: 120 },
+    {
+      title: t('v55.short.status'),
+      dataIndex: 'status',
+      width: 110,
+      render: (value: ShortLink['status']) => <Tag color={statusMeta[value].color}>{statusMeta[value].label}</Tag>,
+    },
     {
       title: t('v55.short.creator'),
       dataIndex: 'creator',
       width: 220,
     },
     { title: t('v55.short.createdAt'), dataIndex: 'createdAt', width: 160 },
-    { title: t('v55.short.expires'), dataIndex: 'expires', width: 120, render: (value: string) => value === '不过期' ? t('v55.short.never') : value },
-    {
-      title: t('common.action'),
-      key: 'op',
-      width: 160,
-      render: (_, row) => <Button type="link" icon={<CopyOutlined />} onClick={() => copy(row.tiny)}>{t('v55.short.copy')}</Button>,
-    },
   ]
 
   const save = async () => {
@@ -178,6 +203,7 @@ export default function ShortLinks55() {
           creator: account?.email || session?.email || '当前成员',
           createdAt,
           expires: '不过期',
+          status: 'active',
         },
         ...current,
       ])
@@ -196,7 +222,12 @@ export default function ShortLinks55() {
           <Typography.Text type="secondary">{canViewLine ? t('v55.short.scopeLine') : t('v55.short.scopeOwn')}</Typography.Text>
         </div>
         {!creating && (
-          <Button type="primary" icon={<PlusOutlined />} disabled={!domainReady} onClick={() => setCreating(true)}>{t('v55.short.create')}</Button>
+          <Space>
+            <Typography.Text type={links.length >= MAX_LINKS ? 'danger' : 'secondary'}>
+              {t('v55.short.totalLimit', { count: links.length, max: MAX_LINKS })}
+            </Typography.Text>
+            <Button type="primary" icon={<PlusOutlined />} disabled={!domainReady || links.length >= MAX_LINKS} onClick={startCreating}>{t('v55.short.create')}</Button>
+          </Space>
         )}
       </div>
       <Space style={{ margin: '16px 0' }}>
@@ -215,7 +246,7 @@ export default function ShortLinks55() {
           <Form.Item label={t('v55.short.domainField')} required>
             <Select value={DOMAIN} options={[{ label: DOMAIN, value: DOMAIN }]} />
           </Form.Item>
-          <Form.Item name="alias" label={t('v55.short.aliasField')} rules={[{ pattern: /^[A-Za-z0-9_-]*$/, message: t('v55.short.aliasRule') }]}>
+          <Form.Item name="alias" label={t('v55.short.aliasField')} rules={[{ required: true, message: t('v55.short.aliasRequired') }, { pattern: /^[A-Za-z0-9_-]+$/, message: t('v55.short.aliasRule') }]}>
             <Input placeholder={t('v55.short.aliasPlaceholder')} />
           </Form.Item>
           <Space>
