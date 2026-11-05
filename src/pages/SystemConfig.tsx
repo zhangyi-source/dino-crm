@@ -70,7 +70,7 @@ const MODULE_HIERARCHY: ModuleNode[] = [
       { key: 'marketingV2_skus' },
       { key: 'marketingV2_offers', children: [{ key: 'marketingV2_offers_edit' }] },
       { key: 'marketingV2_landing', children: [{ key: 'marketingV2_landing_create' }, { key: 'marketingV2_landing_edit' }, { key: 'marketingV2_landing_preview' }, { key: 'marketingV2_landing_copy' }] },
-      { key: 'marketingV2_shortlinks', children: [{ key: 'marketingV2_shortlinks_view_line' }] },
+      { key: 'marketingV2_shortlinks' },
     ],
   },
 ]
@@ -92,7 +92,7 @@ const EMPTY_PERMS = (): Record<ModuleKey, PermLevel> =>
 
 type RoleModal = { mode: 'create' } | { mode: 'edit'; role: Role } | null
 
-export default function SystemConfig({ phase5 = false, phase55 = false }: { phase5?: boolean; phase55?: boolean }) {
+export default function SystemConfig({ phase5 = false, phase55 = false, integrated = false }: { phase5?: boolean; phase55?: boolean; integrated?: boolean }) {
   const { t, lang } = useI18n()
   const { can, actor } = usePerm()
   const canEditRoles = can('system') === 'operate' || can('system_role_edit') === 'operate'
@@ -109,7 +109,7 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
 
   const moduleLabel = (m: ModuleKey) => {
     if (m === 'managementDashboard_export') return lang === 'en' ? 'Export dashboard data' : '下载看板数据'
-    if (m === 'managementDashboard') return lang === 'en' ? 'Management Dashboard (Phase 5)' : '管理看板（五期）'
+    if (m === 'managementDashboard') return integrated ? (lang === 'en' ? 'Management Dashboard' : '管理看板') : (lang === 'en' ? 'Management Dashboard (Phase 5)' : '管理看板（五期）')
     if (m === 'salesV5_batch_assign') return lang === 'en' ? 'Batch assign leads' : '批量分配线索'
     if (m === 'appABTest') return lang === 'en' ? 'APP A/B test (Phase 6)' : 'APP A/B test配置（六期）'
     if (m === 'marketingV2_channel_types') return lang === 'en' ? 'Manage channel types' : '维护渠道类型（独立授权）'
@@ -117,17 +117,17 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
       marketingV2: 'Marketing Center', marketingV2_channels: 'Channel management', marketingV2_channels_edit: 'Create and edit channels', marketingV2_channels_status: 'Enable / disable channels', marketingV2_skus: 'SKU catalog (view only)',
       marketingV2_offers: 'Offer plans', marketingV2_offers_edit: 'Create and edit offer plans', marketingV2_offers_status: 'Enable / end offer plans',
       marketingV2_landing: 'Landing page management', marketingV2_landing_create: 'Create landing pages', marketingV2_landing_edit: 'Edit landing pages', marketingV2_landing_preview: 'Generate preview links', marketingV2_landing_copy: 'Copy landing page links', marketingV2_landing_status: 'Publish / unpublish landing pages',
-      marketingV2_shortlinks: 'Short links', marketingV2_shortlinks_view_line: 'View every short link on this business line',
+      marketingV2_shortlinks: 'Short-link management',
     } : {
       marketingV2: '营销中心', marketingV2_channels: '渠道管理', marketingV2_channels_edit: '新建及编辑渠道', marketingV2_channels_status: '启用/停用渠道', marketingV2_skus: 'SKU 管理（仅查看）',
       marketingV2_offers: '优惠方案', marketingV2_offers_edit: '新建及编辑优惠方案', marketingV2_offers_status: '启用/结束优惠方案',
       marketingV2_landing: '落地页管理', marketingV2_landing_create: '新建落地页', marketingV2_landing_edit: '编辑落地页', marketingV2_landing_preview: '生成预览链接', marketingV2_landing_copy: '复制落地页链接', marketingV2_landing_status: '落地页上下架',
-      marketingV2_shortlinks: '短链管理', marketingV2_shortlinks_view_line: '查看本业务线全部短链',
+      marketingV2_shortlinks: '短链管理',
     }
     if (marketingV2Labels[m]) return marketingV2Labels[m]!
     if (m === 'usersV2') return t('app.nav.users')
     if (m === 'ordersV3') return t('app.nav.orders')
-    if (m === 'salesV3') return phase5 ? `${t('app.nav.sales')}（${lang === 'en' ? 'Phase 5' : '五期'}）` : t('app.nav.sales')
+    if (m === 'salesV3') return !integrated && phase5 ? `${t('app.nav.sales')}（${lang === 'en' ? 'Phase 5' : '五期'}）` : t('app.nav.sales')
     return m.includes('_') ? t(`perm.${m}`) : t(`app.nav.${m}`)
   }
   const levelLabel = (lv: PermLevel) => t(`sys.level.${lv}`)
@@ -264,13 +264,17 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
 
   // 权限矩阵：行=模块（主模块+子模块平铺），列=角色
   const isCurrentSales = (row: ModuleRow) => row.key === 'salesV3' || row.ancestors.includes('salesV3')
-  const shortLinkOrder: ModuleKey[] = ['marketingV2', 'marketingV2_shortlinks', 'marketingV2_shortlinks_view_line']
+  const shortLinkOrder: ModuleKey[] = ['marketingV2', 'marketingV2_shortlinks']
   const sortShortLinkFirst = (rows: ModuleRow[]) => phase55
     ? [...shortLinkOrder.flatMap((key) => rows.filter((row) => row.key === key)), ...rows.filter((row) => !shortLinkOrder.includes(row.key))]
     : rows
-  const matrixData = sortShortLinkFirst(phase5
-    ? [...MODULE_ROWS.filter(isCurrentSales), ...MODULE_ROWS.filter(row => !isCurrentSales(row))]
-    : MODULE_ROWS)
+  const liveRoots: ModuleKey[] = ['marketingV2', 'salesV3', 'usersV2', 'ordersV3', 'system', 'managementDashboard']
+  const liveRows = MODULE_ROWS.filter((row) => liveRoots.some((root) => row.key === root || row.ancestors.includes(root)))
+  const matrixData = integrated
+    ? liveRows
+    : sortShortLinkFirst(phase5
+      ? [...MODULE_ROWS.filter(isCurrentSales), ...MODULE_ROWS.filter(row => !isCurrentSales(row))]
+      : MODULE_ROWS)
 
   const matrixColumns: ColumnsType<ModuleRow> = [
     {
@@ -335,12 +339,15 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
         email: a.email,
         name: a.name,
         roleId: a.roleId,
-        isSalesMember: a.isSalesMember === true,
+        memberJobs: [
+          ...(a.isSalesMember === true ? ['cc'] : []),
+          ...(a.shortLinkManager === true ? ['shortLinkManager'] : []),
+        ],
         businessLines: a.businessLines,
         ...(!phase5 ? { status: a.status === '启用' } : {}),
       })
     } else {
-      form.setFieldsValue({ isSalesMember: false, ...(!phase5 ? { status: true } : {}) })
+      form.setFieldsValue({ memberJobs: [], ...(!phase5 ? { status: true } : {}) })
     }
   }
   const submitAcc = async () => {
@@ -353,7 +360,8 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
       roleId: v.roleId,
       businessLines: scope === 'all' ? [] : v.businessLines ?? [],
       status: phase5 ? accEditing?.status ?? '启用' : v.status ? '启用' : '停用',
-      isSalesMember: v.isSalesMember === true,
+      isSalesMember: (v.memberJobs ?? []).includes('cc'),
+      shortLinkManager: (v.memberJobs ?? []).includes('shortLinkManager'),
       salesLead: accEditing?.salesLead,
       lastLogin: accEditing?.lastLogin,
       outboundSeatBound: accEditing?.outboundSeatBound || false,
@@ -424,7 +432,18 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
   const accColumns: ColumnsType<Account> = [
     { title: t('sys.acc.col.name'), dataIndex: 'name', width: 140 },
     { title: t('sys.acc.col.email'), dataIndex: 'email', width: 220 },
-    { title: phase5 ? (lang === 'en' ? 'Frontline sales (CC)' : '一线销售（CC）') : '销售成员', key: 'salesMember', width: 140, render: (_: unknown, account: Account) => account.isSalesMember ? <Tag color="blue">{phase5 ? 'CC' : '销售'}</Tag> : <Text type="secondary">—</Text> },
+    {
+      title: lang === 'en' ? 'Member positions' : '成员岗位',
+      key: 'memberJobs',
+      width: 190,
+      render: (_: unknown, account: Account) => {
+        const jobs = [
+          ...(account.isSalesMember ? [{ key: 'cc', label: 'CC', color: 'blue' }] : []),
+          ...(account.shortLinkManager ? [{ key: 'shortLinkManager', label: lang === 'en' ? 'Short-link administrator' : '短链管理员', color: 'purple' }] : []),
+        ]
+        return jobs.length ? <Space size={4} wrap>{jobs.map(job => <Tag key={job.key} color={job.color}>{job.label}</Tag>)}</Space> : <Text type="secondary">—</Text>
+      },
+    },
     {
       title: t('sys.acc.col.role'),
       dataIndex: 'roleId',
@@ -517,12 +536,12 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
       title={
         <span className="section-title">
           <SafetyOutlined style={{ marginRight: 8 }} />
-          {t('sys.title')}{phase55 ? ' · 5.5' : phase5 ? (lang === 'en' ? ' · Phase 5' : ' · 五期') : ''}
+          {t('sys.title')}{integrated ? '' : phase55 ? ' · 5.5' : phase5 ? (lang === 'en' ? ' · Phase 5' : ' · 五期') : ''}
         </span>
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <Text type="secondary">{phase55 ? (lang === 'en' ? '5.5 adds Short links under Marketing Center. Turn Short links on before the next row appears. No access shows only your own links; full access shows every creator on the current business line.' : '5.5 在营销中心下新增短链管理。短链管理设为可操作后，才出现下一行「查看本业务线全部短链」。无权限只看自己在当前业务线创建的，可操作看当前业务线全部创建人。') : phase5 ? (lang === 'en' ? 'Roles control permissions. Mark frontline sales (CC) in member accounts; CCs may add up to 3 membership days per operation in both centers.' : '角色管理操作权限；在成员账号中标记一线销售（CC）。CC 在用户中心和销售中心每次添加会员时长均最多 3 天。') : t('sys.intro')}</Text>
+        <Text type="secondary">{phase5 ? (lang === 'en' ? 'Roles control feature access. Member positions add job-specific behavior: CC keeps the existing sales logic; Short-link administrator can view all short links in the member’s business lines.' : '角色控制功能入口；成员岗位补充岗位数据能力。CC 沿用现有逻辑，勾选「短链管理员」后可查看成员所在业务线下的全部短链。') : t('sys.intro')}</Text>
       </div>
 
       <OutboundBindingModal account={bindingAccount} onCancel={() => setBindingAccount(null)} onSave={bindings => {
@@ -706,10 +725,8 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
                   const isSub = row.depth > 0
                   const p3 = isPhase3(m)
                   const hint = m === 'marketingV2_shortlinks'
-                    ? (lang === 'en' ? 'Enter and create. The list still shows only links you created on the current business line.' : '可进入、可新建。列表仍只有自己在当前业务线创建的短链。')
-                    : m === 'marketingV2_shortlinks_view_line'
-                      ? (lang === 'en' ? 'No access: only your own. Full access: every creator on the current business line.' : '无权限：只看自己。可操作：看当前业务线全部创建人。不跨业务线。')
-                      : ''
+                    ? (lang === 'en' ? 'No access hides the menu. Full access allows viewing, creating and copying short links; data scope is controlled by the member position.' : '无权限时菜单不可见；可操作时可查看、新建、复制短链。数据范围由成员岗位控制。')
+                    : ''
                   return (
                     <span style={{ marginLeft: row.depth * 16, color: p3 ? '#bfbfbf' : (isSub ? '#8c8c8c' : 'inherit') }}>
                     {isSub ? `└ ${moduleLabel(m)}` : moduleLabel(m)}
@@ -812,7 +829,23 @@ export default function SystemConfig({ phase5 = false, phase55 = false }: { phas
               options={lines.map((l) => ({ label: l, value: l }))}
             />
           </Form.Item>
-          <Form.Item name="isSalesMember" label={phase5 ? (lang === 'en' ? 'Frontline sales (CC)' : '是否为一线销售（CC）') : '销售成员'} valuePropName="checked" extra={phase5 ? undefined : '开启后纳入五期 CC 筛选的在职销售列表；接收分配还需启用账号、销售操作权限及对应业务线权限。'}><Switch checkedChildren={lang === 'en' ? 'Yes' : '是'} unCheckedChildren={lang === 'en' ? 'No' : '否'} /></Form.Item>
+          <Form.Item
+            name="memberJobs"
+            label={lang === 'en' ? 'Member positions' : '成员岗位'}
+            extra={lang === 'en'
+              ? 'Multiple selections are allowed. CC keeps the existing logic. Short-link administrator can view every short link in the member’s authorized business lines.'
+              : '支持多选。CC 沿用现有逻辑；短链管理员可查看该成员已授权业务线下的全部短链。'}
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder={lang === 'en' ? 'Select member positions' : '请选择成员岗位，可多选'}
+              options={[
+                { value: 'cc', label: lang === 'en' ? 'Frontline sales (CC)' : 'CC' },
+                { value: 'shortLinkManager', label: lang === 'en' ? 'Short-link administrator' : '短链管理员' },
+              ]}
+            />
+          </Form.Item>
           {!phase5 && <Form.Item name="status" label={t('sys.acc.col.status')} valuePropName="checked">
             <Switch
               checkedChildren={t('sys.status.enabled')}

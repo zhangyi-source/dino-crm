@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Form, Input, Radio, Select, Space, Table, Tag, Typography, message } from 'antd'
+import { Button, Card, Form, Input, Select, Space, Table, Typography, message } from 'antd'
 import { CopyOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { useNavigate } from 'react-router-dom'
-import { BUSINESS_LINES, type BusinessLine, type PermLevel } from '../../types'
+import { BUSINESS_LINES, type BusinessLine } from '../../types'
 import { useSession } from '../../auth'
 import { usePerm } from '../../perm'
-import { setState } from '../../store'
 import { useI18n } from '../../i18n'
 
 type ShortLink = {
@@ -22,7 +20,6 @@ type ShortLink = {
   expires: string
 }
 
-const { Text } = Typography
 const DOMAIN = 'go.dinoai.ai'
 const READY_LINES = new Set<BusinessLine>(BUSINESS_LINES.filter((line) => line !== '其他'))
 
@@ -102,12 +99,12 @@ const seed: ShortLink[] = [
 ]
 
 export default function ShortLinks55() {
-  const { t, lang } = useI18n()
-  const navigate = useNavigate()
+  const { t } = useI18n()
   const session = useSession()
-  const { account, role, can } = usePerm()
+  const { account, role } = usePerm()
   const me = (account?.email || session?.email || '').toLowerCase()
-  const canViewLine = can('marketingV2_shortlinks_view_line') === 'operate'
+  // 角色决定能否进入模块；成员岗位决定进入后的短链数据范围。
+  const canViewLine = !role || account?.shortLinkManager === true
   const lineOptions = useMemo(() => {
     if (!role || role.dataScope === 'all') return [...BUSINESS_LINES]
     const allowed = new Set(account?.businessLines ?? [])
@@ -129,16 +126,6 @@ export default function ShortLinks55() {
     [links, line, canViewLine, me],
   )
 
-  const setViewLine = (level: PermLevel) => {
-    if (!role) return
-    setState((prev) => ({
-      ...prev,
-      roles: prev.roles.map((item) => item.id === role.id
-        ? { ...item, perms: { ...item.perms, marketingV2_shortlinks_view_line: level } }
-        : item),
-    }))
-  }
-
   const copy = async (value: string) => {
     await navigator.clipboard.writeText(value)
     message.success(t('v55.short.copied'))
@@ -154,12 +141,6 @@ export default function ShortLinks55() {
       title: t('v55.short.creator'),
       dataIndex: 'creator',
       width: 220,
-      render: (value: string) => (
-        <Space size={6}>
-          <span>{value}</span>
-          {value.toLowerCase() !== me && <Tag>{lang === 'en' ? 'Someone else' : '他人'}</Tag>}
-        </Space>
-      ),
     },
     { title: t('v55.short.createdAt'), dataIndex: 'createdAt', width: 160 },
     { title: t('v55.short.expires'), dataIndex: 'expires', width: 120, render: (value: string) => value === '不过期' ? t('v55.short.never') : value },
@@ -212,42 +193,12 @@ export default function ShortLinks55() {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
         <div>
           <div className="section-title" style={{ marginBottom: 8 }}>{t('v55.short.title')}</div>
-          <Typography.Text type="secondary">{t('v55.short.note')}</Typography.Text>
+          <Typography.Text type="secondary">{canViewLine ? t('v55.short.scopeLine') : t('v55.short.scopeOwn')}</Typography.Text>
         </div>
         {!creating && (
           <Button type="primary" icon={<PlusOutlined />} disabled={!domainReady} onClick={() => setCreating(true)}>{t('v55.short.create')}</Button>
         )}
       </div>
-      <Alert
-        style={{ marginTop: 16 }}
-        type="info"
-        showIcon
-        message={canViewLine ? t('v55.short.scopeLine') : t('v55.short.scopeOwn')}
-        description={(
-          <div>
-            <div style={{ marginTop: 8 }}>
-              <Text>{lang === 'en' ? 'Short links' : '短链管理'}</Text>
-              <Tag color="green" style={{ marginLeft: 8 }}>{t('sys.level.operate')}</Tag>
-            </div>
-            <div style={{ margin: '8px 0 0 16px' }}>
-              <Text type="secondary">└ {lang === 'en' ? 'View every short link on this business line' : '查看本业务线全部短链'}</Text>
-              <Radio.Group
-                size="small"
-                style={{ marginLeft: 12 }}
-                optionType="button"
-                disabled={!role}
-                value={canViewLine ? 'operate' : 'none'}
-                onChange={(event) => setViewLine(event.target.value)}
-                options={(['none', 'operate'] as PermLevel[]).map((level) => ({ label: t(`sys.level.${level}`), value: level }))}
-              />
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary">{role ? `${role.name}。${t('v55.short.samePlace')}` : t('v55.short.previewOnly')}</Text>
-              {can('system') !== 'none' && <Button type="link" size="small" onClick={() => navigate('/system-v55')}>{t('v55.short.openRoles')}</Button>}
-            </div>
-          </div>
-        )}
-      />
       <Space style={{ margin: '16px 0' }}>
         <span>{t('v55.short.line')}</span>
         <Select style={{ width: 160 }} value={line} onChange={setLine} options={lineOptions.map((item) => ({ label: item, value: item }))} />

@@ -309,7 +309,7 @@ export type Order = {
   orderStatus: OrderStatus
   originalPrice: number
   paidAmount: number
-  payMethod: 'App Store' | 'Google Play' | 'Airwallex - Card' | 'Airwallex - Kakaopay'
+  payMethod: 'App Store' | 'Google Play' | 'Airwallex - Card' | 'Airwallex - Kakaopay' | '手动银行转账'
   currency: string
   paidTime?: string
   validUntil?: string // 有效期到期时间
@@ -434,6 +434,7 @@ export type AccountStatus = '启用' | '停用'
 
 export type Account = {
   isSalesMember?: boolean // 明确标记真实销售；与页面权限、坐席绑定分别维护
+  shortLinkManager?: boolean // 短链管理员岗位：可查看账号所在业务线下全部短链
   id: string
   email: string
   name: string

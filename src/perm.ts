@@ -60,12 +60,9 @@ export function usePerm() {
     if (m === 'managementDashboard') return dashboardPermission(role, account)
     if (m === 'managementDashboard_export') return dashboardExportPermission(role, account)
     if (!role) return 'operate'
-    // 父级「短链管理」不是可操作时，下一行即使还存着可操作也不生效。
-    if (m === 'marketingV2_shortlinks_view_line' && role.perms.marketingV2_shortlinks !== 'operate') return 'none'
     const saved = role.perms[m]
     if (saved) return saved
     if (m === 'marketingV2_shortlinks') return role.id === 'role_admin' || role.id === 'role_growth' || role.id === 'role_ops' ? 'operate' : 'none'
-    if (m === 'marketingV2_shortlinks_view_line') return role.id === 'role_admin' || role.id === 'role_ops' ? 'operate' : 'none'
     if (m === 'salesV5_batch_assign') return role.id === 'role_admin' ? 'operate' : 'none'
     if (m === 'appABTest') return role.perms.marketing ?? 'none'
     if (m === 'marketingV2_channel_types') return role.id === 'role_admin' ? 'operate' : 'none'

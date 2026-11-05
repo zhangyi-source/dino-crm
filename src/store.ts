@@ -215,6 +215,10 @@ function load(): AppState {
       // 合并种子默认值：即使旧数据缺少新增字段（如 callRecords），也不会因 undefined 而崩溃
       const merged = { ...seeded, ...(JSON.parse(raw) as Partial<AppState>) }
       const normalized = normalizePaymentMethods(merged)
+      const manualOrders = seeded.orders.filter((order) => order.orderId.startsWith('MB'))
+      if (manualOrders.some((order) => !normalized.orders.some((existing) => existing.orderId === order.orderId))) {
+        normalized.orders = [...normalized.orders, ...manualOrders.filter((order) => !normalized.orders.some((existing) => existing.orderId === order.orderId))]
+      }
       // 已保存的浏览器演示数据会覆盖整个 students 数组；补回新加入的预约外呼示例，
       // 以便旧会话也能立即验证“待外呼”阶段内的时间展示，而不重置用户已有演示数据。
       const callbackDemo = seeded.students.find((student) => student.studentId === 'demo_callback_lead_001')!
@@ -228,7 +232,7 @@ function load(): AppState {
   } catch {
     /* ignore */
   }
-  const finalSeeded = autoAllocate(withPhase5Members(withManagementDemo(normalizePaymentMethods(seeded))))
+  const finalSeeded = autoAllocate(withShortLinkPermission(withPhase5Members(withManagementDemo(normalizePaymentMethods(seeded)))))
   localStorage.setItem(KEY, JSON.stringify(finalSeeded))
   return finalSeeded
 }
@@ -254,24 +258,27 @@ function normalizePaymentMethods(st: AppState): AppState {
 }
 
 function withShortLinkPermission(st: AppState): AppState {
-  const preset: Record<string, { page: PermLevel; viewLine: PermLevel }> = {
-    role_admin: { page: 'operate', viewLine: 'operate' },
-    role_growth: { page: 'operate', viewLine: 'none' },
-    role_ops: { page: 'operate', viewLine: 'operate' },
+  const preset: Record<string, PermLevel> = {
+    role_admin: 'operate',
+    role_growth: 'operate',
+    role_ops: 'operate',
   }
   return {
     ...st,
     roles: st.roles.map((role) => {
-      const defaults = preset[role.id]
       return {
         ...role,
         perms: {
           ...role.perms,
-          marketingV2_shortlinks: role.perms.marketingV2_shortlinks ?? defaults?.page ?? 'none',
-          marketingV2_shortlinks_view_line: role.perms.marketingV2_shortlinks_view_line ?? defaults?.viewLine ?? 'none',
+          marketingV2_shortlinks: role.perms.marketingV2_shortlinks ?? preset[role.id] ?? 'none',
         },
       }
     }),
+    // 仅用于旧原型数据迁移；保存为 false 后不会再次按角色补回。
+    accounts: st.accounts.map((account) => ({
+      ...account,
+      shortLinkManager: account.shortLinkManager ?? ['role_admin', 'role_ops'].includes(account.roleId),
+    })),
   }
 }
 
@@ -280,7 +287,7 @@ function save(s: AppState) {
 }
 
 export function resetState() {
-  state = withPhase5Members(withManagementDemo(seed()))
+  state = withShortLinkPermission(withPhase5Members(withManagementDemo(seed())))
   emit()
 }
 
@@ -688,6 +695,29 @@ function seed(): AppState {
       transactions: [
         { id: 'TXN-20260616-0008', time: now.subtract(15, 'day').format('YYYY-MM-DD HH:mm:ss'), event: '订单创建', status: '待支付', amount: 119000, note: '等待用户支付' },
         { id: 'TXN-20260616-0009', time: now.subtract(14, 'day').format('YYYY-MM-DD HH:mm:ss'), event: '订单取消', status: '已取消', amount: 0, note: '超时未支付，系统自动取消' },
+      ],
+    },
+    {
+      orderId: 'MB-1008', productName: 'Dino English 月度会员', studentId: '2060199610824356010', userStatus: '付费',
+      orderStatus: '已支付', originalPrice: 899000, paidAmount: 899000, payMethod: '手动银行转账', currency: 'IDR',
+      paidTime: now.subtract(1, 'hour').format('YYYY-MM-DD HH:mm:ss'),
+      validUntil: now.add(30, 'day').format('YYYY-MM-DD HH:mm:ss'),
+      transactions: [
+        { id: 'TXN-MB-1008', time: now.subtract(1, 'hour').format('YYYY-MM-DD HH:mm:ss'), event: '支付成功', status: '已支付', amount: 899000, paymentMethod: '手动银行转账', note: '线下银行转账到账' },
+      ],
+    },
+    {
+      orderId: 'MB-1009', productName: 'Dino English 月度会员', studentId: '2060199610824355843', userStatus: '付费',
+      orderStatus: '待支付', originalPrice: 899000, paidAmount: 0, payMethod: '手动银行转账', currency: 'IDR',
+      transactions: [
+        { id: 'TXN-MB-1009', time: now.subtract(3, 'hour').format('YYYY-MM-DD HH:mm:ss'), event: '订单创建', status: '待支付', amount: 899000, paymentMethod: '手动银行转账', note: '等待银行转账到账' },
+      ],
+    },
+    {
+      orderId: 'MB-1010', productName: 'Dino English 月度会员', studentId: '2060199610824355846', userStatus: '付费逾期',
+      orderStatus: '已取消', originalPrice: 899000, paidAmount: 0, payMethod: '手动银行转账', currency: 'IDR',
+      transactions: [
+        { id: 'TXN-MB-1010', time: now.subtract(5, 'hour').format('YYYY-MM-DD HH:mm:ss'), event: '订单取消', status: '已取消', amount: 0, paymentMethod: '手动银行转账', note: '转账未到账，订单取消' },
       ],
     },
   ]
