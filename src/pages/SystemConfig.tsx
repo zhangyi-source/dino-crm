@@ -339,15 +339,12 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
         email: a.email,
         name: a.name,
         roleId: a.roleId,
-        memberJobs: [
-          ...(a.isSalesMember === true ? ['cc'] : []),
-          ...(a.shortLinkManager === true ? ['shortLinkManager'] : []),
-        ],
+        memberJob: a.shortLinkManager === true ? 'shortLinkManager' : 'cc',
         businessLines: a.businessLines,
         ...(!phase5 ? { status: a.status === '启用' } : {}),
       })
     } else {
-      form.setFieldsValue({ memberJobs: [], ...(!phase5 ? { status: true } : {}) })
+      form.setFieldsValue({ memberJob: 'cc', ...(!phase5 ? { status: true } : {}) })
     }
   }
   const submitAcc = async () => {
@@ -360,8 +357,8 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
       roleId: v.roleId,
       businessLines: scope === 'all' ? [] : v.businessLines ?? [],
       status: phase5 ? accEditing?.status ?? '启用' : v.status ? '启用' : '停用',
-      isSalesMember: (v.memberJobs ?? []).includes('cc'),
-      shortLinkManager: (v.memberJobs ?? []).includes('shortLinkManager'),
+      isSalesMember: v.memberJob === 'cc',
+      shortLinkManager: v.memberJob === 'shortLinkManager',
       salesLead: accEditing?.salesLead,
       lastLogin: accEditing?.lastLogin,
       outboundSeatBound: accEditing?.outboundSeatBound || false,
@@ -439,7 +436,7 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
       render: (_: unknown, account: Account) => {
         const jobs = [
           ...(account.isSalesMember ? [{ key: 'cc', label: 'CC', color: 'blue' }] : []),
-          ...(account.shortLinkManager ? [{ key: 'shortLinkManager', label: lang === 'en' ? 'Short-link administrator' : '短链管理员', color: 'purple' }] : []),
+          ...(account.shortLinkManager ? [{ key: 'shortLinkManager', label: lang === 'en' ? 'Short-link management' : '短链管理', color: 'purple' }] : []),
         ]
         return jobs.length ? <Space size={4} wrap>{jobs.map(job => <Tag key={job.key} color={job.color}>{job.label}</Tag>)}</Space> : <Text type="secondary">—</Text>
       },
@@ -541,7 +538,7 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <Text type="secondary">{phase5 ? (lang === 'en' ? 'Roles control feature access. Member positions add job-specific behavior: CC keeps the existing sales logic; Short-link administrator can view all short links in the member’s business lines.' : '角色控制功能入口；成员岗位补充岗位数据能力。CC 沿用现有逻辑，勾选「短链管理员」后可查看成员所在业务线下的全部短链。') : t('sys.intro')}</Text>
+        <Text type="secondary">{phase5 ? (lang === 'en' ? 'Roles control feature access. The member position is single-select: CC sees links they created; Short-link management sees all links in authorized business lines.' : '角色控制功能入口；成员岗位为单选。CC 仅查看本人创建的短链，「短链管理」可查看已授权业务线下的全部短链。') : t('sys.intro')}</Text>
       </div>
 
       <OutboundBindingModal account={bindingAccount} onCancel={() => setBindingAccount(null)} onSave={bindings => {
@@ -830,19 +827,18 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
             />
           </Form.Item>
           <Form.Item
-            name="memberJobs"
-            label={lang === 'en' ? 'Member positions' : '成员岗位'}
+            name="memberJob"
+            label={lang === 'en' ? 'Member position' : '岗位'}
+            rules={[{ required: true, message: t('common.pleaseSelect') }]}
             extra={lang === 'en'
-              ? 'Multiple selections are allowed. CC keeps the existing logic. Short-link administrator can view every short link in the member’s authorized business lines.'
-              : '支持多选。CC 沿用现有逻辑；短链管理员可查看该成员已授权业务线下的全部短链。'}
+              ? 'Single-select. Existing members default to CC. Short-link management can view every short link in authorized business lines.'
+              : '单选。历史成员默认保持 CC；「短链管理」可查看该成员已授权业务线下的全部短链。'}
           >
             <Select
-              mode="multiple"
-              allowClear
-              placeholder={lang === 'en' ? 'Select member positions' : '请选择成员岗位，可多选'}
+              placeholder={lang === 'en' ? 'Select a member position' : '请选择岗位'}
               options={[
                 { value: 'cc', label: lang === 'en' ? 'Frontline sales (CC)' : 'CC' },
-                { value: 'shortLinkManager', label: lang === 'en' ? 'Short-link administrator' : '短链管理员' },
+                { value: 'shortLinkManager', label: lang === 'en' ? 'Short-link management' : '短链管理' },
               ]}
             />
           </Form.Item>
