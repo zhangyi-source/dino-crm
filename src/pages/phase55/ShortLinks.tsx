@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Breadcrumb, Button, Card, Col, DatePicker, Form, Input, Radio, Row, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
-import { CopyOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, Breadcrumb, Button, Card, Col, DatePicker, Form, Input, Modal, Radio, Row, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd'
+import { CopyOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { BUSINESS_LINES, type BusinessLine } from '../../types'
@@ -15,13 +15,27 @@ type ShortLink = {
   domain: string
   alias: string
   tiny: string
+  remark?: string
   creator: string
   createdAt: string
   expiresAt?: string
   unavailable?: boolean
 }
 
-const DOMAIN = 'go.dinoai.ai'
+const COUNTRY_DOMAINS = [
+  { line: '马来', country: '马来西亚', domain: 'my.go.dinoai.ai' },
+  { line: '印尼', country: '印度尼西亚', domain: 'id.go.dinoai.ai' },
+  { line: '泰国', country: '泰国', domain: 'th.go.dinoai.ai' },
+  { line: '新加坡', country: '新加坡', domain: 'sg.go.dinoai.ai' },
+  { line: '越南', country: '越南', domain: 'vn.go.dinoai.ai' },
+  { line: '韩国', country: '韩国', domain: 'kr.go.dinoai.ai' },
+  { line: '沙特', country: '沙特阿拉伯', domain: 'sa.go.dinoai.ai' },
+  { line: '菲律宾', country: '菲律宾', domain: 'ph.go.dinoai.ai' },
+  { line: '阿联酋', country: '阿联酋', domain: 'ae.go.dinoai.ai' },
+] as const
+const domainForLine = (line: string) => COUNTRY_DOMAINS.find((item) => item.line === line)?.domain
+const domainOptions = COUNTRY_DOMAINS.map((item) => ({ label: `${item.country} · ${item.domain}`, value: item.domain }))
+const DEFAULT_DOMAIN = COUNTRY_DOMAINS[0].domain
 const MAX_LINKS = 500
 const INITIAL_USAGE = 486
 const RESET_DATE = '2026-11-12'
@@ -33,9 +47,10 @@ const seed: ShortLink[] = [
     line: '沙特',
     name: 'KSA 体验课 9 月',
     url: 'https://www.dinoai.ai/ksa/trial',
-    domain: DOMAIN,
+    domain: 'sa.go.dinoai.ai',
     alias: 'ksa-trial',
-    tiny: `https://${DOMAIN}/ksa-trial`,
+    tiny: 'https://sa.go.dinoai.ai/ksa-trial',
+    remark: '沙特体验课广告投放',
     creator: 'marketing@dinoai.ai',
     createdAt: '2026-09-23 14:20',
   },
@@ -44,9 +59,10 @@ const seed: ShortLink[] = [
     line: '沙特',
     name: 'KSA 社媒 10 月',
     url: 'https://www.dinoai.ai/ksa/social',
-    domain: DOMAIN,
+    domain: 'sa.go.dinoai.ai',
     alias: 'ksa-social',
-    tiny: `https://${DOMAIN}/ksa-social`,
+    tiny: 'https://sa.go.dinoai.ai/ksa-social',
+    remark: '10 月社媒活动',
     creator: 'admin@dinoai.ai',
     createdAt: '2026-10-02 11:05',
     expiresAt: '2026-10-31',
@@ -56,9 +72,10 @@ const seed: ShortLink[] = [
     line: '韩国',
     name: 'KR 体验课',
     url: 'https://www.dinoai.ai/kr/trial',
-    domain: DOMAIN,
+    domain: 'kr.go.dinoai.ai',
     alias: 'kr-trial',
-    tiny: `https://${DOMAIN}/kr-trial`,
+    tiny: 'https://kr.go.dinoai.ai/kr-trial',
+    remark: '韩国体验课',
     creator: 'growth.kr@dinoai.ai',
     createdAt: '2026-09-28 09:40',
   },
@@ -67,9 +84,10 @@ const seed: ShortLink[] = [
     line: '韩国',
     name: 'KR 品牌周',
     url: 'https://www.dinoai.ai/kr/brand',
-    domain: DOMAIN,
+    domain: 'kr.go.dinoai.ai',
     alias: 'kr-brand',
-    tiny: `https://${DOMAIN}/kr-brand`,
+    tiny: 'https://kr.go.dinoai.ai/kr-brand',
+    remark: '品牌周活动',
     creator: 'admin@dinoai.ai',
     createdAt: '2026-10-06 16:12',
     unavailable: true,
@@ -79,9 +97,10 @@ const seed: ShortLink[] = [
     line: '越南',
     name: 'VN TikTok',
     url: 'https://www.dinoai.ai/vn/tiktok',
-    domain: DOMAIN,
+    domain: 'vn.go.dinoai.ai',
     alias: 'vn-tiktok',
-    tiny: `https://${DOMAIN}/vn-tiktok`,
+    tiny: 'https://vn.go.dinoai.ai/vn-tiktok',
+    remark: 'TikTok 投放',
     creator: 'ops.vn@dinoai.ai',
     createdAt: '2026-09-30 13:18',
   },
@@ -90,9 +109,10 @@ const seed: ShortLink[] = [
     line: '越南',
     name: 'VN 体验课',
     url: 'https://www.dinoai.ai/vn/trial',
-    domain: DOMAIN,
+    domain: 'vn.go.dinoai.ai',
     alias: 'vn-trial',
-    tiny: `https://${DOMAIN}/vn-trial`,
+    tiny: 'https://vn.go.dinoai.ai/vn-trial',
+    remark: '越南体验课',
     creator: 'growth.kr@dinoai.ai',
     createdAt: '2026-10-01 10:02',
   },
@@ -112,15 +132,14 @@ export default function ShortLinks55() {
   const [line, setLine] = useState<BusinessLine>(lineOptions.find((item) => seed.some((link) => link.line === item)) ?? lineOptions[0] ?? '沙特')
   const [links, setLinks] = useState<ShortLink[]>(seed)
   const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<ShortLink | null>(null)
   const [saving, setSaving] = useState(false)
   const [usage, setUsage] = useState(INITIAL_USAGE)
   const [draftFilters, setDraftFilters] = useState({ name: '', creator: undefined as string | undefined, domain: undefined as string | undefined, dates: undefined as [dayjs.Dayjs, dayjs.Dayjs] | undefined, status: undefined as string | undefined })
   const [filters, setFilters] = useState(draftFilters)
   const [form] = Form.useForm()
-  const alias = Form.useWatch('alias', form)
-  const selectedDomain = Form.useWatch('domain', form)
   const expiryMode = Form.useWatch('expiryMode', form)
-  const domainReady = READY_LINES.has(line)
+  const domainReady = READY_LINES.has(line) && !!domainForLine(line)
 
   useEffect(() => {
     if (!lineOptions.includes(line)) setLine(lineOptions[0] ?? '沙特')
@@ -156,13 +175,42 @@ export default function ShortLinks55() {
       message.warning(`本周期短链创建额度已用完，将于 ${RESET_DATE} 重置`)
       return
     }
-    form.setFieldsValue({ domain: DOMAIN, alias: '', expiryMode: 'permanent' })
+    setEditing(null)
+    form.setFieldsValue({ domain: domainForLine(line) ?? DEFAULT_DOMAIN, expiryMode: 'permanent', remark: '' })
     setCreating(true)
   }
 
   const closeForm = () => {
     setCreating(false)
+    setEditing(null)
     form.resetFields()
+  }
+
+  const startEditing = (link: ShortLink) => {
+    setEditing(link)
+    form.setFieldsValue({
+      name: link.name,
+      url: link.url,
+      domain: link.domain,
+      remark: link.remark,
+      expiryMode: link.expiresAt ? 'scheduled' : 'permanent',
+      expiresAt: link.expiresAt ? dayjs(link.expiresAt) : undefined,
+    })
+    setCreating(true)
+  }
+
+  const deleteLink = (link: ShortLink) => {
+    Modal.confirm({
+      title: '删除短链',
+      content: `确认删除「${link.name}」？删除后不可恢复。`,
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        setLinks((current) => current.filter((item) => item.id !== link.id))
+        message.success('短链已删除')
+      },
+    })
   }
 
   const copyLink = async (link: ShortLink) => {
@@ -181,7 +229,7 @@ export default function ShortLinks55() {
     { title: '短链', dataIndex: 'tiny', width: 230, ellipsis: { showTitle: false }, render: (value: string) => <Tooltip title={value}>{value}</Tooltip> },
     { title: '原始链接', dataIndex: 'url', width: 260, ellipsis: { showTitle: false }, render: (value: string) => <Tooltip title={value}>{value}</Tooltip> },
     { title: '域名', dataIndex: 'domain', width: 150 },
-    { title: '后缀', dataIndex: 'alias', width: 130 },
+    { title: '备注', dataIndex: 'remark', width: 180, ellipsis: { showTitle: false }, render: (value?: string) => value ? <Tooltip title={value}>{value}</Tooltip> : '—' },
     { title: '创建人', dataIndex: 'creator', width: 210, ellipsis: true },
     { title: '业务线', dataIndex: 'line', width: 90 },
     { title: '创建时间', dataIndex: 'createdAt', width: 160 },
@@ -205,29 +253,45 @@ export default function ShortLinks55() {
       title: '操作',
       key: 'action',
       fixed: 'right',
-      width: 110,
+      width: 230,
       render: (_, row) => {
         const disabled = ['expired', 'unavailable'].includes(statusOf(row))
-        return <Button type="link" icon={<CopyOutlined />} disabled={disabled} onClick={() => copyLink(row)}>复制短链</Button>
+        return (
+          <Space size={0}>
+            <Button type="link" icon={<CopyOutlined />} disabled={disabled} onClick={() => copyLink(row)}>复制</Button>
+            <Button type="link" icon={<EditOutlined />} onClick={() => startEditing(row)}>编辑</Button>
+            <Button type="link" danger icon={<DeleteOutlined />} onClick={() => deleteLink(row)}>删除</Button>
+          </Space>
+        )
       },
     },
   ]
 
   const save = async () => {
     const values = await form.validateFields()
-    if (!domainReady || usage >= MAX_LINKS) return
-    const alias = (values.alias || '').trim()
-    if (alias && links.some((item) => item.domain === values.domain && item.alias === alias)) {
-      message.error('后缀已被占用，请更换后再保存')
-      return
-    }
+    if (!domainReady || (!editing && usage >= MAX_LINKS)) return
     setSaving(true)
     window.setTimeout(() => {
+      const expiresAt = values.expiryMode === 'scheduled' ? values.expiresAt?.format('YYYY-MM-DD HH:mm:ss') : undefined
+      if (editing) {
+        setLinks((current) => current.map((item) => item.id === editing.id ? {
+          ...item,
+          name: values.name.trim(),
+          url: values.url.trim(),
+          domain: values.domain,
+          tiny: `https://${values.domain}/${item.alias}`,
+          remark: values.remark?.trim(),
+          expiresAt,
+        } : item))
+        setSaving(false)
+        closeForm()
+        message.success('短链已更新')
+        return
+      }
       const now = new Date()
       const pad = (n: number) => String(n).padStart(2, '0')
       const createdAt = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
-      const finalAlias = alias || Math.random().toString(36).slice(2, 8)
-      const expiresAt = values.expiryMode === 'scheduled' ? values.expiresAt?.format('YYYY-MM-DD HH:mm:ss') : undefined
+      const finalAlias = Math.random().toString(36).slice(2, 8)
       setLinks((current) => [{
         id: `sl-${Date.now()}`,
         line,
@@ -236,6 +300,7 @@ export default function ShortLinks55() {
         domain: values.domain,
         alias: finalAlias,
         tiny: `https://${values.domain}/${finalAlias}`,
+        remark: values.remark?.trim(),
         creator: account?.email || session?.email || '当前成员',
         createdAt,
         expiresAt,
@@ -253,9 +318,9 @@ export default function ShortLinks55() {
         <Breadcrumb style={{ marginBottom: 20 }} items={[
           { title: '营销中心' },
           { title: <a onClick={closeForm}>短链管理</a> },
-          { title: '新建短链' },
+          { title: editing ? '编辑短链' : '新建短链' },
         ]} />
-        <Typography.Title level={4}>新建短链</Typography.Title>
+        <Typography.Title level={4}>{editing ? '编辑短链' : '新建短链'}</Typography.Title>
         <Alert type="info" showIcon message={`TinyURL 本周期已使用 ${usage} / ${MAX_LINKS}，${RESET_DATE} 重置`} style={{ marginBottom: 20 }} />
         <Form form={form} layout="vertical" style={{ maxWidth: 720 }} onFinish={save}>
           <Form.Item name="name" label="短链名称" rules={[{ required: true, message: '请填写短链名称' }, { max: 50, message: '最多 50 个字符' }]}>
@@ -277,21 +342,12 @@ export default function ShortLinks55() {
           ]}>
             <Input placeholder="https://www.dinoai.ai/..." />
           </Form.Item>
-          <Form.Item name="domain" label="域名" rules={[{ required: true, message: '请选择域名' }]} extra="仅展示 TinyURL 状态为 Active 且已配置给当前业务线的品牌域名">
-            <Select options={[{ label: `${DOMAIN}（Active）`, value: DOMAIN }]} />
+          <Form.Item name="domain" label="域名" rules={[{ required: true, message: '请选择域名' }]} extra="按所选业务线自动回显对应域名；支持九个国家的 Active 子域名">
+            <Select options={domainOptions} />
           </Form.Item>
-          <Form.Item name="alias" label="自定义后缀（TinyURL alias）" rules={[
-            { pattern: /^[A-Za-z0-9_-]*$/, message: '只允许字母、数字、连字符和下划线' },
-            { max: 30, message: '最多 30 个字符' },
-          ]} extra="选填；留空由 TinyURL 自动生成，同一域名下不可重复">
-            <Input maxLength={30} placeholder="例如：ksa-trial" />
+          <Form.Item name="remark" label="备注" rules={[{ max: 200, message: '最多 200 个字符' }]}>
+            <Input.TextArea rows={3} maxLength={200} showCount placeholder="填写该短链的用途或投放说明" />
           </Form.Item>
-          <div style={{ padding: '12px 16px', background: '#f5f7fa', borderRadius: 8, marginBottom: 20 }}>
-            <Typography.Text type="secondary">短链预览　</Typography.Text>
-            <Typography.Text strong>
-              {alias ? `https://${selectedDomain || DOMAIN}/${alias}` : '创建后由平台生成'}
-            </Typography.Text>
-          </div>
           <Form.Item name="expiryMode" label="有效期">
             <Radio.Group>
               <Radio value="permanent">永久有效</Radio>
@@ -309,7 +365,7 @@ export default function ShortLinks55() {
           </Row>
           <Alert type="warning" showIcon message="第三方创建成功后即占用本周期额度；提交中请勿重复操作。" style={{ marginBottom: 20 }} />
           <Space>
-            <Button type="primary" htmlType="submit" loading={saving}>创建短链</Button>
+            <Button type="primary" htmlType="submit" loading={saving}>{editing ? '保存修改' : '创建短链'}</Button>
             <Button onClick={closeForm}>取消</Button>
           </Space>
         </Form>
@@ -332,7 +388,7 @@ export default function ShortLinks55() {
         <Row gutter={[16, 16]}>
           <Col xs={24} md={12} xl={6}><Input value={draftFilters.name} maxLength={50} placeholder="短链名称（模糊搜索）" onChange={(e) => setDraftFilters({ ...draftFilters, name: e.target.value })} /></Col>
           <Col xs={24} md={12} xl={6}><Select allowClear style={{ width: '100%' }} value={draftFilters.creator} placeholder="创建人" options={creatorOptions} onChange={(creator) => setDraftFilters({ ...draftFilters, creator })} /></Col>
-          <Col xs={24} md={12} xl={6}><Select allowClear style={{ width: '100%' }} value={draftFilters.domain} placeholder="域名" options={domainReady ? [{ label: DOMAIN, value: DOMAIN }] : []} onChange={(domain) => setDraftFilters({ ...draftFilters, domain })} /></Col>
+          <Col xs={24} md={12} xl={6}><Select allowClear style={{ width: '100%' }} value={draftFilters.domain} placeholder="域名" options={domainOptions} onChange={(domain) => setDraftFilters({ ...draftFilters, domain })} /></Col>
           <Col xs={24} md={12} xl={6}><Select allowClear style={{ width: '100%' }} value={draftFilters.status} placeholder="有效状态" options={[
             { label: '全部', value: '' }, { label: '生效中', value: 'active' }, { label: '已过期', value: 'expired' }, { label: '永久有效', value: 'permanent' },
           ]} onChange={(status) => setDraftFilters({ ...draftFilters, status })} /></Col>
