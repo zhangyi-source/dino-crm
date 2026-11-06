@@ -339,12 +339,15 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
         email: a.email,
         name: a.name,
         roleId: a.roleId,
-        memberJob: a.shortLinkManager === true ? 'shortLinkManager' : 'cc',
+        memberJobs: [
+          ...(a.isSalesMember === true ? ['cc'] : []),
+          ...(a.shortLinkManager === true ? ['shortLinkManager'] : []),
+        ],
         businessLines: a.businessLines,
         ...(!phase5 ? { status: a.status === '启用' } : {}),
       })
     } else {
-      form.setFieldsValue({ memberJob: 'cc', ...(!phase5 ? { status: true } : {}) })
+      form.setFieldsValue({ memberJobs: ['cc'], ...(!phase5 ? { status: true } : {}) })
     }
   }
   const submitAcc = async () => {
@@ -357,8 +360,8 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
       roleId: v.roleId,
       businessLines: scope === 'all' ? [] : v.businessLines ?? [],
       status: phase5 ? accEditing?.status ?? '启用' : v.status ? '启用' : '停用',
-      isSalesMember: v.memberJob === 'cc',
-      shortLinkManager: v.memberJob === 'shortLinkManager',
+      isSalesMember: (v.memberJobs ?? []).includes('cc'),
+      shortLinkManager: (v.memberJobs ?? []).includes('shortLinkManager'),
       salesLead: accEditing?.salesLead,
       lastLogin: accEditing?.lastLogin,
       outboundSeatBound: accEditing?.outboundSeatBound || false,
@@ -538,7 +541,7 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
       }
     >
       <div style={{ marginBottom: 12 }}>
-        <Text type="secondary">{phase5 ? (lang === 'en' ? 'Roles control feature access. The member position is single-select: CC sees links they created; Short-link management sees all links in authorized business lines.' : '角色控制功能入口；成员岗位为单选。CC 仅查看本人创建的短链，「短链管理」可查看已授权业务线下的全部短链。') : t('sys.intro')}</Text>
+        <Text type="secondary">{phase5 ? (lang === 'en' ? 'Roles control feature access. Member positions support multiple selections. Selecting Short-link management grants access to all links in authorized business lines.' : '角色控制功能入口；岗位支持多选。勾选「短链管理」后可查看已授权业务线下的全部短链，未勾选时仅查看本人创建。') : t('sys.intro')}</Text>
       </div>
 
       <OutboundBindingModal account={bindingAccount} onCancel={() => setBindingAccount(null)} onSave={bindings => {
@@ -827,15 +830,17 @@ export default function SystemConfig({ phase5 = false, phase55 = false, integrat
             />
           </Form.Item>
           <Form.Item
-            name="memberJob"
+            name="memberJobs"
             label={lang === 'en' ? 'Member position' : '岗位'}
             rules={[{ required: true, message: t('common.pleaseSelect') }]}
             extra={lang === 'en'
-              ? 'Single-select. Existing members default to CC. Short-link management can view every short link in authorized business lines.'
-              : '单选。历史成员默认保持 CC；「短链管理」可查看该成员已授权业务线下的全部短链。'}
+              ? 'Multiple selections are allowed. Existing members default to CC. Selecting Short-link management expands the short-link data scope.'
+              : '支持多选。历史成员默认保持 CC；勾选「短链管理」后可查看该成员已授权业务线下的全部短链。'}
           >
             <Select
-              placeholder={lang === 'en' ? 'Select a member position' : '请选择岗位'}
+              mode="multiple"
+              allowClear
+              placeholder={lang === 'en' ? 'Select member positions' : '请选择岗位，可多选'}
               options={[
                 { value: 'cc', label: lang === 'en' ? 'Frontline sales (CC)' : 'CC' },
                 { value: 'shortLinkManager', label: lang === 'en' ? 'Short-link management' : '短链管理' },
