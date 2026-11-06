@@ -3,13 +3,15 @@ import { Alert, Breadcrumb, Button, Card, Col, DatePicker, Form, Input, Modal, R
 import { CopyOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { BUSINESS_LINES, type BusinessLine } from '../../types'
+import { type BusinessLine } from '../../types'
 import { useSession } from '../../auth'
 import { usePerm } from '../../perm'
 
+type ShortLinkLine = BusinessLine | '菲律宾' | '阿联酋'
+
 type ShortLink = {
   id: string
-  line: BusinessLine
+  line: ShortLinkLine
   name: string
   url: string
   domain: string
@@ -22,7 +24,7 @@ type ShortLink = {
   unavailable?: boolean
 }
 
-const COUNTRY_DOMAINS = [
+const COUNTRY_DOMAINS: { line: ShortLinkLine; country: string; domain: string }[] = [
   { line: '马来', country: '马来西亚', domain: 'my.go.dinoai.ai' },
   { line: '印尼', country: '印度尼西亚', domain: 'id.go.dinoai.ai' },
   { line: '泰国', country: '泰国', domain: 'th.go.dinoai.ai' },
@@ -35,12 +37,11 @@ const COUNTRY_DOMAINS = [
 ] as const
 const domainForLine = (line: string) => COUNTRY_DOMAINS.find((item) => item.line === line)?.domain
 const domainOptions = COUNTRY_DOMAINS.map((item) => ({ label: `${item.country} · ${item.domain}`, value: item.domain }))
+const countryLines = COUNTRY_DOMAINS.map((item) => item.line)
 const DEFAULT_DOMAIN = COUNTRY_DOMAINS[0].domain
 const MAX_LINKS = 500
 const INITIAL_USAGE = 486
 const RESET_DATE = '2026-11-12'
-const READY_LINES = new Set<BusinessLine>(BUSINESS_LINES.filter((line) => line !== '其他'))
-
 const seed: ShortLink[] = [
   {
     id: 'sl-ksa',
@@ -125,11 +126,11 @@ export default function ShortLinks55() {
   // 角色决定能否进入模块；成员岗位决定进入后的短链数据范围。
   const canViewLine = !role || account?.shortLinkManager === true
   const lineOptions = useMemo(() => {
-    if (!role || role.dataScope === 'all') return [...BUSINESS_LINES]
+    if (!role || role.dataScope === 'all') return [...countryLines]
     const allowed = new Set(account?.businessLines ?? [])
-    return BUSINESS_LINES.filter((item) => allowed.has(item))
+    return countryLines.filter((item) => allowed.has(item as BusinessLine))
   }, [account?.businessLines, role])
-  const [line, setLine] = useState<BusinessLine>(lineOptions.find((item) => seed.some((link) => link.line === item)) ?? lineOptions[0] ?? '沙特')
+  const [line, setLine] = useState<ShortLinkLine>(lineOptions.find((item) => seed.some((link) => link.line === item)) ?? lineOptions[0] ?? '沙特')
   const [links, setLinks] = useState<ShortLink[]>(seed)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<ShortLink | null>(null)
@@ -139,7 +140,7 @@ export default function ShortLinks55() {
   const [filters, setFilters] = useState(draftFilters)
   const [form] = Form.useForm()
   const expiryMode = Form.useWatch('expiryMode', form)
-  const domainReady = READY_LINES.has(line) && !!domainForLine(line)
+  const domainReady = !!domainForLine(line)
 
   useEffect(() => {
     if (!lineOptions.includes(line)) setLine(lineOptions[0] ?? '沙特')
@@ -343,7 +344,7 @@ export default function ShortLinks55() {
             <Input placeholder="https://www.dinoai.ai/..." />
           </Form.Item>
           <Form.Item name="domain" label="域名" rules={[{ required: true, message: '请选择域名' }]} extra="按所选业务线自动回显对应域名；支持九个国家的 Active 子域名">
-            <Select options={domainOptions} />
+            <Select disabled options={domainOptions} />
           </Form.Item>
           <Form.Item name="remark" label="备注" rules={[{ max: 200, message: '最多 200 个字符' }]}>
             <Input.TextArea rows={3} maxLength={200} showCount placeholder="填写该短链的用途或投放说明" />
