@@ -136,7 +136,7 @@ export default function ShortLinks55() {
   const [editing, setEditing] = useState<ShortLink | null>(null)
   const [saving, setSaving] = useState(false)
   const [usage, setUsage] = useState(INITIAL_USAGE)
-  const [draftFilters, setDraftFilters] = useState({ name: '', creator: undefined as string | undefined, domain: undefined as string | undefined, dates: undefined as [dayjs.Dayjs, dayjs.Dayjs] | undefined, status: undefined as string | undefined })
+  const [draftFilters, setDraftFilters] = useState({ name: '', creator: undefined as string | undefined, domain: undefined as string | undefined, status: undefined as string | undefined })
   const [filters, setFilters] = useState(draftFilters)
   const [form] = Form.useForm()
   const expiryMode = Form.useWatch('expiryMode', form)
@@ -162,10 +162,6 @@ export default function ShortLinks55() {
     .filter((item) => !filters.creator || item.creator === filters.creator)
     .filter((item) => !filters.domain || item.domain === filters.domain)
     .filter((item) => !filters.status || statusOf(item) === filters.status)
-    .filter((item) => !filters.dates || (
-      dayjs(item.createdAt).isAfter(filters.dates[0].startOf('day')) &&
-      dayjs(item.createdAt).isBefore(filters.dates[1].endOf('day'))
-    ))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [permittedRows, filters])
 
   const creatorOptions = useMemo(() => [...new Set(permittedRows.map((item) => item.creator))]
@@ -393,12 +389,11 @@ export default function ShortLinks55() {
           <Col xs={24} md={12} xl={6}><Select allowClear style={{ width: '100%' }} value={draftFilters.status} placeholder="有效状态" options={[
             { label: '全部', value: '' }, { label: '生效中', value: 'active' }, { label: '已过期', value: 'expired' }, { label: '永久有效', value: 'permanent' },
           ]} onChange={(status) => setDraftFilters({ ...draftFilters, status })} /></Col>
-          <Col xs={24} xl={12}><DatePicker.RangePicker style={{ width: '100%' }} value={draftFilters.dates} onChange={(dates) => setDraftFilters({ ...draftFilters, dates: dates as [dayjs.Dayjs, dayjs.Dayjs] | undefined })} placeholder={['创建开始时间', '创建结束时间']} /></Col>
           <Col xs={24} xl={12}>
             <Space>
               <Button type="primary" icon={<SearchOutlined />} onClick={() => setFilters({ ...draftFilters })}>查询</Button>
               <Button icon={<ReloadOutlined />} onClick={() => {
-                const empty = { name: '', creator: undefined, domain: undefined, dates: undefined, status: undefined }
+                const empty = { name: '', creator: undefined, domain: undefined, status: undefined }
                 setDraftFilters(empty)
                 setFilters(empty)
               }}>重置</Button>
